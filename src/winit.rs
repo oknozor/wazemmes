@@ -1,26 +1,18 @@
 use std::time::Duration;
 
-use smithay::{
-    backend::{
-        renderer::gles2::Gles2Renderer,
-        winit::{self, WinitError, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
-    },
-    desktop::space::SurfaceTree,
-    reexports::{
-        calloop::{
-            timer::{TimeoutAction, Timer},
-            EventLoop,
-        },
-        wayland_server::protocol::wl_output,
-    },
-    utils::Rectangle,
-    wayland::output::{Mode, Output, PhysicalProperties},
-};
+use smithay::backend::renderer::gles2::Gles2Renderer;
+use smithay::backend::winit::{self, WinitError, WinitEvent, WinitEventLoop, WinitGraphicsBackend};
+use smithay::desktop::space::SurfaceTree;
+use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
+use smithay::reexports::calloop::EventLoop;
+use smithay::reexports::wayland_server::protocol::wl_output;
+use smithay::utils::Rectangle;
+use smithay::wayland::output::{Mode, Output, PhysicalProperties};
 
 use slog::Logger;
 
-use crate::{CallLoopData, Wazemmes};
 use crate::shell::workspace::WorkspaceRef;
+use crate::{CallLoopData, Wazemmes};
 
 pub fn init_winit(
     event_loop: &mut EventLoop<CallLoopData>,

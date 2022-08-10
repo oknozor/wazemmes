@@ -1,27 +1,20 @@
-use std::sync::Mutex;
-use smithay::{
-    delegate_xdg_shell,
-    desktop::{Kind, Space, WindowSurfaceType},
-    reexports::{
-        wayland_protocols::xdg::shell::server::xdg_toplevel,
-        wayland_server::{
-            protocol::{wl_seat, wl_surface::WlSurface},
-            DisplayHandle, Resource,
-        },
-    },
-    wayland::{
-        compositor::with_states,
-        seat::{PointerGrabStartData, Seat},
-        shell::xdg::{
-            PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-            XdgToplevelSurfaceRoleAttributes,
-        },
-        Serial,
-    },
+use smithay::delegate_xdg_shell;
+use smithay::desktop::{Kind, Space, WindowSurfaceType};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::reexports::wayland_server::protocol::wl_seat;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::wayland::compositor::with_states;
+use smithay::wayland::seat::{PointerGrabStartData, Seat};
+use smithay::wayland::shell::xdg::{
+    PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+    XdgToplevelSurfaceRoleAttributes,
 };
+use smithay::wayland::Serial;
+use std::sync::Mutex;
 
-use smithay::wayland::SERIAL_COUNTER;
 use crate::Wazemmes;
+use smithay::wayland::SERIAL_COUNTER;
 
 #[derive(Debug, Copy, Clone)]
 struct WindowId(u32);
@@ -52,10 +45,16 @@ impl XdgShellHandler for Wazemmes {
             .expect("Should have a keyboard seat");
 
         let serial = SERIAL_COUNTER.next_serial();
-        handle.set_focus(&dh, Some(&surface.wl_surface()), serial);
+        handle.set_focus(dh, Some(surface.wl_surface()), serial);
     }
 
-    fn new_popup(&mut self, _dh: &DisplayHandle, _surface: PopupSurface, _positioner: PositionerState) {}
+    fn new_popup(
+        &mut self,
+        _dh: &DisplayHandle,
+        _surface: PopupSurface,
+        _positioner: PositionerState,
+    ) {
+    }
 
     fn move_request(
         &mut self,
@@ -64,7 +63,6 @@ impl XdgShellHandler for Wazemmes {
         _seat: wl_seat::WlSeat,
         _serial: Serial,
     ) {
-
     }
 
     fn resize_request(
@@ -89,7 +87,13 @@ impl XdgShellHandler for Wazemmes {
         }
     }
 
-    fn grab(&mut self, _dh: &DisplayHandle, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
+    fn grab(
+        &mut self,
+        _dh: &DisplayHandle,
+        _surface: PopupSurface,
+        _seat: wl_seat::WlSeat,
+        _serial: Serial,
+    ) {
         // TODO popup grabs
     }
 }
@@ -97,7 +101,11 @@ impl XdgShellHandler for Wazemmes {
 // Xdg Shell
 delegate_xdg_shell!(Wazemmes);
 
-fn check_grab(seat: &Seat<Wazemmes>, surface: &WlSurface, serial: Serial) -> Option<PointerGrabStartData> {
+fn check_grab(
+    seat: &Seat<Wazemmes>,
+    surface: &WlSurface,
+    serial: Serial,
+) -> Option<PointerGrabStartData> {
     let pointer = seat.get_pointer()?;
 
     // Check that this surface has a click grab.

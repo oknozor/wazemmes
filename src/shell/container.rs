@@ -1,13 +1,12 @@
 use crate::shell::tree::ContainerRef;
-use smithay::desktop::{Space};
+use crate::shell::window::WindowWarp;
+use smithay::desktop::Space;
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::Size;
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::slice::Iter;
-use crate::shell::window::WindowWarp;
 
 pub mod id {
     use once_cell::sync::Lazy;
@@ -74,17 +73,13 @@ impl Container {
     }
 
     pub fn get_focused_window(&self) -> Option<(usize, &'_ WindowWarp)> {
-        self
-            .windows
-            .iter()
-            .enumerate()
-            .find(|(_, surface)| {
-                surface
-                    .get_toplevel()
-                    .current_state()
-                    .states
-                    .contains(xdg_toplevel::State::Activated)
-            })
+        self.windows.iter().enumerate().find(|(_, surface)| {
+            surface
+                .get_toplevel()
+                .current_state()
+                .states
+                .contains(xdg_toplevel::State::Activated)
+        })
     }
 
     pub fn push_window(&mut self, surface: ToplevelSurface, space: &mut Space) {
@@ -123,8 +118,7 @@ impl Container {
                 layout,
             };
 
-            let idx = self.get_focused_window()
-                .map(|(idx, _)| idx);
+            let idx = self.get_focused_window().map(|(idx, _)| idx);
 
             if let Some(idx) = idx {
                 let surface = self.windows.remove(idx);
@@ -133,18 +127,22 @@ impl Container {
 
             let child = Rc::new(RefCell::new(child));
             self.childs.push(child.clone());
-            println!("Created child container {} with size = {:?} and loc= {:?} in container [{}]", id::get(), (width, height), (x, y), self.id);
+            println!(
+                "Created child container {} with size = {:?} and loc= {:?} in container [{}]",
+                id::get(),
+                (width, height),
+                (x, y),
+                self.id
+            );
             child
         }
     }
 
     pub fn close_window(&mut self) {
-        let idx = self
-            .get_focused_window()
-            .map(|(idx, window)| {
-                window.send_close();
-                idx
-            });
+        let idx = self.get_focused_window().map(|(idx, window)| {
+            window.send_close();
+            idx
+        });
 
         if let Some(idx) = idx {
             println!("surface removed");
@@ -169,12 +167,18 @@ impl Container {
 
         for (idx, window) in self.windows.iter().enumerate() {
             println!("Configuring surface in container");
-            window.get_toplevel().with_pending_state(|state| state.size = Some(Size::from(window_size)));
+            window
+                .get_toplevel()
+                .with_pending_state(|state| state.size = Some(Size::from(window_size)));
 
             if idx > 0 {
                 match self.layout {
-                    ContainerLayout::Vertical => location = (location.0, location.1 + window_size.1),
-                    ContainerLayout::Horizontal => location = (location.0 + window_size.0, location.1),
+                    ContainerLayout::Vertical => {
+                        location = (location.0, location.1 + window_size.1)
+                    }
+                    ContainerLayout::Horizontal => {
+                        location = (location.0 + window_size.0, location.1)
+                    }
                 }
             };
             let surfaces_nth = self.windows.len() - 1;
@@ -196,10 +200,7 @@ impl Container {
     }
 
     pub fn flatten_window(&self) -> Vec<WindowWarp> {
-        let mut windows: Vec<WindowWarp> = self.windows
-            .iter()
-            .cloned()
-            .collect();
+        let mut windows: Vec<WindowWarp> = self.windows.to_vec();
 
         for child in &self.childs {
             let child = child.borrow();

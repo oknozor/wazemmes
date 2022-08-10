@@ -1,9 +1,9 @@
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
+use crate::Tree;
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::output::Output;
-use crate::Tree;
+use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct WorkspaceRef {
@@ -13,7 +13,7 @@ pub struct WorkspaceRef {
 impl From<Workspace> for WorkspaceRef {
     fn from(workspace: Workspace) -> Self {
         WorkspaceRef {
-            inner: Rc::new(RefCell::new(workspace))
+            inner: Rc::new(RefCell::new(workspace)),
         }
     }
 }
@@ -21,7 +21,7 @@ impl From<Workspace> for WorkspaceRef {
 impl WorkspaceRef {
     pub fn new(output: Output, space: &Space) -> Self {
         Self {
-            inner: Rc::new(RefCell::new(Workspace::new(output, space)))
+            inner: Rc::new(RefCell::new(Workspace::new(output, space))),
         }
     }
 
@@ -41,10 +41,7 @@ impl Workspace {
         let geo = space.output_geometry(&output).unwrap();
         let tree = Tree::new(&output, geo);
 
-        Self {
-            tree,
-            output,
-        }
+        Self { tree, output }
     }
 
     pub fn unmap_all(&self, space: &mut Space) {

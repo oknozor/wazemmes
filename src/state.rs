@@ -1,30 +1,24 @@
 use crate::shell::container::ContainerLayout;
+use crate::shell::workspace::WorkspaceRef;
 use crate::CallLoopData;
 use slog::Logger;
-use smithay::{
-    desktop::{Space, WindowSurfaceType},
-    reexports::{
-        calloop::{generic::Generic, EventLoop, Interest, LoopSignal, Mode, PostAction},
-        wayland_server::{
-            backend::{ClientData, ClientId, DisconnectReason},
-            protocol::wl_surface::WlSurface,
-            Display,
-        },
-    },
-    utils::{Logical, Point},
-    wayland::{
-        compositor::CompositorState,
-        data_device::DataDeviceState,
-        output::OutputManagerState,
-        seat::{PointerHandle, Seat, SeatState},
-        shell::xdg::XdgShellState,
-        shm::ShmState,
-        socket::ListeningSocketSource,
-    },
-};
-use std::{ffi::OsString, sync::Arc};
+use smithay::desktop::{Space, WindowSurfaceType};
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
+use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::Display;
+use smithay::utils::{Logical, Point};
+use smithay::wayland::compositor::CompositorState;
+use smithay::wayland::data_device::DataDeviceState;
+use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::seat::{PointerHandle, Seat, SeatState};
+use smithay::wayland::shell::xdg::XdgShellState;
+use smithay::wayland::shm::ShmState;
+use smithay::wayland::socket::ListeningSocketSource;
 use std::collections::HashMap;
-use crate::shell::workspace::{Workspace, WorkspaceRef};
+use std::ffi::OsString;
+use std::sync::Arc;
 
 pub struct Wazemmes {
     pub start_time: std::time::Instant,

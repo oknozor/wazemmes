@@ -1,17 +1,12 @@
-use smithay::{
-    backend::renderer::utils::on_commit_buffer_handler,
-    delegate_compositor, delegate_shm,
-    reexports::wayland_server::{
-        protocol::{wl_buffer, wl_surface::WlSurface},
-        DisplayHandle,
-    },
-    wayland::{
-        buffer::BufferHandler,
-        compositor::{CompositorHandler, CompositorState},
-        shm::{ShmHandler, ShmState},
-    },
-};
 use crate::Wazemmes;
+use smithay::backend::renderer::utils::on_commit_buffer_handler;
+use smithay::reexports::wayland_server::protocol::wl_buffer;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::wayland::buffer::BufferHandler;
+use smithay::wayland::compositor::{CompositorHandler, CompositorState};
+use smithay::wayland::shm::{ShmHandler, ShmState};
+use smithay::{delegate_compositor, delegate_shm};
 
 use super::xdg_shell;
 

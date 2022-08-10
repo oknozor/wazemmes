@@ -13,7 +13,7 @@ impl WindowWarp {
     }
 
     pub fn get(&self) -> &Window {
-       &self.0
+        &self.0
     }
 
     pub fn send_close(&self) {

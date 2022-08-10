@@ -1,12 +1,10 @@
 use crate::shell::container;
 use crate::shell::container::{Container, ContainerLayout};
+use crate::shell::window::WindowWarp;
 use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::output::Output;
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::slice::Iter;
-use smithay::reexports::ash::vk::Window;
-use crate::shell::window::WindowWarp;
 
 pub type ContainerRef = Rc<RefCell<Container>>;
 

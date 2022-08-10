@@ -4,7 +4,7 @@ extern crate core;
 
 use crate::shell::tree::Tree;
 use crate::state::Wazemmes;
-use slog::{Drain, o};
+use slog::{o, Drain};
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::wayland_server::Display;
 
@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     slog::info!(log, "Starting Wazemmes");
     let mut event_loop: EventLoop<CallLoopData> = EventLoop::try_new()?;
     let mut display: Display<Wazemmes> = Display::new()?;
-    let mut state = Wazemmes::new(&mut event_loop, &mut display, log.clone());
+    let state = Wazemmes::new(&mut event_loop, &mut display, log.clone());
     let mut data = CallLoopData { state, display };
     winit::init_winit(&mut event_loop, &mut data, log)?;
     std::process::Command::new("alacritty").spawn().ok();

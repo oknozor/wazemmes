@@ -1,22 +1,17 @@
 use crate::shell::container::{ContainerLayout, ContainerState};
 use slog::debug;
-use smithay::backend::input::KeyState;
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::{
-    backend::input::{
-        Axis, Event, InputBackend, InputEvent, KeyboardKeyEvent, PointerAxisEvent,
-        PointerButtonEvent, PointerMotionAbsoluteEvent,
-    },
-    reexports::wayland_server::{protocol::wl_pointer, Display},
-    wayland::{
-        seat::{AxisFrame, ButtonEvent, FilterResult, MotionEvent},
-        SERIAL_COUNTER,
-    },
+use smithay::backend::input::{
+    Axis, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent,
+    PointerButtonEvent, PointerMotionAbsoluteEvent,
 };
+use smithay::reexports::wayland_server::protocol::wl_pointer;
+use smithay::reexports::wayland_server::{Display, DisplayHandle};
+use smithay::wayland::seat::{AxisFrame, ButtonEvent, FilterResult, MotionEvent};
+use smithay::wayland::SERIAL_COUNTER;
 
-use smithay::wayland::seat::keysyms as xkb;
 use crate::shell::tree::ContainerRef;
 use crate::state::Wazemmes;
+use smithay::wayland::seat::keysyms as xkb;
 
 #[derive(Debug, PartialEq)]
 enum KeyAction {
@@ -47,9 +42,11 @@ impl Wazemmes {
                     }
                     KeyAction::Close => {
                         let state = {
-                            let container = self.get_current_workspace()
+                            let container = self
+                                .get_current_workspace()
                                 .get_mut()
-                                .tree.get_container_focused();
+                                .tree
+                                .get_container_focused();
                             let mut container = container.borrow_mut();
                             debug!(&self.log, "Closing window in container: {}", container.id);
                             container.close_window();
@@ -59,13 +56,11 @@ impl Wazemmes {
                         match state {
                             ContainerState::Empty => {
                                 println!("empty container removed");
-                                self.get_current_workspace()
-                                    .get_mut()
-                                    .tree
-                                    .pop();
+                                self.get_current_workspace().get_mut().tree.pop();
                             }
                             ContainerState::HasChildrenOnly => {
-                                let container = self.get_current_workspace()
+                                let container = self
+                                    .get_current_workspace()
                                     .get_mut()
                                     .tree
                                     .get_container_focused();
@@ -73,7 +68,8 @@ impl Wazemmes {
                                 let mut container = container.borrow_mut();
                                 let id = container.id;
                                 if let Some(parent) = &mut container.parent {
-                                    let childs: Vec<ContainerRef> = copy.borrow_mut().childs.drain(..).collect();
+                                    let childs: Vec<ContainerRef> =
+                                        copy.borrow_mut().childs.drain(..).collect();
                                     let mut parent = parent.borrow_mut();
                                     parent.childs.extend_from_slice(childs.as_slice());
                                     let parent_id = parent.id;
@@ -86,7 +82,8 @@ impl Wazemmes {
                         };
 
                         // Reset focus
-                        let container = self.get_current_workspace()
+                        let container = self
+                            .get_current_workspace()
                             .get_mut()
                             .tree
                             .get_container_focused();
@@ -99,12 +96,20 @@ impl Wazemmes {
                             .expect("Should have a keyboard seat");
 
                         let serial = SERIAL_COUNTER.next_serial();
-                        handle.set_focus(&display.handle(), Some(window.get_toplevel().wl_surface()), serial);
+                        handle.set_focus(
+                            &display.handle(),
+                            Some(window.get_toplevel().wl_surface()),
+                            serial,
+                        );
                     }
                     KeyAction::LayoutVertical => self.next_layout = Some(ContainerLayout::Vertical),
-                    KeyAction::LayoutHorizontal => self.next_layout = Some(ContainerLayout::Horizontal),
+                    KeyAction::LayoutHorizontal => {
+                        self.next_layout = Some(ContainerLayout::Horizontal)
+                    }
                     KeyAction::None => {}
-                    KeyAction::MoveToWorkspace(num) => self.move_to_workspace(num, &display.handle()),
+                    KeyAction::MoveToWorkspace(num) => {
+                        self.move_to_workspace(num, &display.handle())
+                    }
                 }
             }
             InputEvent::PointerMotion { .. } => {}
@@ -145,7 +150,7 @@ impl Wazemmes {
 
                 if wl_pointer::ButtonState::Pressed == button_state && !pointer.is_grabbed() {
                     if let Some(window) =
-                    self.space.window_under(pointer.current_location()).cloned()
+                        self.space.window_under(pointer.current_location()).cloned()
                     {
                         self.space.windows().for_each(|window| {
                             window.set_activated(false);
@@ -233,15 +238,30 @@ impl Wazemmes {
 
                 if modifiers.alt && keysyms.contains(&xkb::KEY_t) && state == KeyState::Pressed {
                     FilterResult::Intercept(KeyAction::Run("alacritty".to_string()))
-                } else if modifiers.alt && keysyms.contains(&xkb::KEY_q) && state == KeyState::Pressed {
+                } else if modifiers.alt
+                    && keysyms.contains(&xkb::KEY_q)
+                    && state == KeyState::Pressed
+                {
                     FilterResult::Intercept(KeyAction::Close)
-                } else if modifiers.alt && keysyms.contains(&xkb::KEY_d) && state == KeyState::Pressed {
+                } else if modifiers.alt
+                    && keysyms.contains(&xkb::KEY_d)
+                    && state == KeyState::Pressed
+                {
                     FilterResult::Intercept(KeyAction::LayoutHorizontal)
-                } else if modifiers.alt && keysyms.contains(&xkb::KEY_v) && state == KeyState::Pressed {
+                } else if modifiers.alt
+                    && keysyms.contains(&xkb::KEY_v)
+                    && state == KeyState::Pressed
+                {
                     FilterResult::Intercept(KeyAction::LayoutVertical)
-                } else if modifiers.alt && keysyms.contains(&xkb::KEY_ampersand) && state == KeyState::Pressed {
+                } else if modifiers.alt
+                    && keysyms.contains(&xkb::KEY_ampersand)
+                    && state == KeyState::Pressed
+                {
                     FilterResult::Intercept(KeyAction::MoveToWorkspace(0))
-                } else if modifiers.alt && keysyms.contains(&xkb::KEY_eacute) && state == KeyState::Pressed {
+                } else if modifiers.alt
+                    && keysyms.contains(&xkb::KEY_eacute)
+                    && state == KeyState::Pressed
+                {
                     FilterResult::Intercept(KeyAction::MoveToWorkspace(1))
                 } else {
                     FilterResult::Forward

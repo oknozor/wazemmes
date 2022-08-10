@@ -1,8 +1,6 @@
-use std::cell::RefMut;
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::wayland::shell::xdg::XdgShellHandler;
-use crate::shell::workspace::{Workspace, WorkspaceRef};
+use crate::shell::workspace::WorkspaceRef;
 use crate::Wazemmes;
+use smithay::reexports::wayland_server::DisplayHandle;
 
 pub mod container;
 pub mod tree;
@@ -12,15 +10,10 @@ pub mod workspace;
 impl Wazemmes {
     pub fn get_current_workspace(&self) -> WorkspaceRef {
         let current = &self.current_workspace;
-        self.workspaces.get(current)
+        self.workspaces
+            .get(current)
             .expect("Current workspace should exist")
             .clone()
-    }
-
-    pub fn new_workspace(&mut self, workspace_id: u8) {
-        let output = self.space.outputs().next().unwrap();
-        let workspace = Workspace::new(output.clone(), &self.space);
-        self.workspaces.insert(workspace_id, WorkspaceRef::from(workspace));
     }
 
     pub fn move_to_workspace(&mut self, num: u8, dh: &DisplayHandle) {
@@ -40,9 +33,7 @@ impl Wazemmes {
                 let workspace = WorkspaceRef::new(output.clone(), &self.space);
                 self.workspaces.insert(num, workspace);
             }
-            Some(workspace) => {
-                workspace.get_mut().map_all(&mut self.space, dh)
-            }
+            Some(workspace) => workspace.get_mut().map_all(&mut self.space, dh),
         };
 
         self.space.refresh(dh);
