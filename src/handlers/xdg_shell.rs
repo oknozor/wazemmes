@@ -19,7 +19,7 @@ use smithay::wayland::SERIAL_COUNTER;
 #[derive(Debug, Copy, Clone)]
 struct WindowId(u32);
 
-impl XdgShellHandler for Wazemmes {
+impl<Backend> XdgShellHandler for Wazemmes<Backend> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -73,7 +73,7 @@ impl XdgShellHandler for Wazemmes {
         serial: Serial,
         _edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<Wazemmes<Backend>> = Seat::from_resource(&seat).unwrap();
 
         let wl_surface = surface.wl_surface();
 
@@ -99,10 +99,10 @@ impl XdgShellHandler for Wazemmes {
 }
 
 // Xdg Shell
-delegate_xdg_shell!(Wazemmes);
+delegate_xdg_shell!(@<BackendData: 'static> Wazemmes<BackendData>);
 
-fn check_grab(
-    seat: &Seat<Wazemmes>,
+fn check_grab<Backend>(
+    seat: &Seat<Wazemmes<Backend>>,
     surface: &WlSurface,
     serial: Serial,
 ) -> Option<PointerGrabStartData> {

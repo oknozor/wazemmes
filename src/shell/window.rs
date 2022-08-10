@@ -1,19 +1,31 @@
 use smithay::desktop::{Kind, Window};
+use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::utils::{Logical, Size};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 #[derive(Debug, Clone)]
-pub struct WindowWarp(Window);
+pub struct WindowWarp {
+    inner: Window,
+    location: (i32, i32),
+}
 
 impl WindowWarp {
     pub fn get_toplevel(&self) -> &ToplevelSurface {
-        match self.0.toplevel() {
+        match self.inner.toplevel() {
             Kind::Xdg(toplevel) => toplevel,
             Kind::X11(_) => unimplemented!(),
         }
     }
 
     pub fn get(&self) -> &Window {
-        &self.0
+        &self.inner
+    }
+
+    pub fn resize<T: Into<Size<i32, Logical>>>(&self, size: T) {
+        self.get_toplevel().with_pending_state(|state| {
+            state.states.set(xdg_toplevel::State::Resizing);
+            state.size = Some(size.into())
+        });
     }
 
     pub fn send_close(&self) {
@@ -23,6 +35,9 @@ impl WindowWarp {
 
 impl From<ToplevelSurface> for WindowWarp {
     fn from(toplevel: ToplevelSurface) -> Self {
-        WindowWarp(Window::new(Kind::Xdg(toplevel)))
+        WindowWarp {
+            inner: Window::new(Kind::Xdg(toplevel)),
+            location: (0, 0),
+        }
     }
 }

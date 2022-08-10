@@ -1080,10 +1080,12 @@ dependencies = [
  "tempfile",
  "thiserror",
  "udev",
+ "wayland-backend",
  "wayland-egl",
  "wayland-protocols 0.30.0-beta.8",
  "wayland-protocols-wlr",
  "wayland-server",
+ "wayland-sys 0.30.0-beta.8",
  "winit",
  "x11rb",
  "xkbcommon",
@@ -1457,7 +1459,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "beca223ed017df1b356ff181d4d6e7f2b135418c4888df5bb02df7a563f02ab0"
 dependencies = [
  "dlib",
+ "libc",
  "log",
+ "memoffset",
  "pkg-config",
 ]
 

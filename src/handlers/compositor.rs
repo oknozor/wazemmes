@@ -10,7 +10,7 @@ use smithay::{delegate_compositor, delegate_shm};
 
 use super::xdg_shell;
 
-impl CompositorHandler for Wazemmes {
+impl<Backend> CompositorHandler for Wazemmes<Backend> {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
@@ -23,15 +23,15 @@ impl CompositorHandler for Wazemmes {
     }
 }
 
-impl BufferHandler for Wazemmes {
+impl<Backend> BufferHandler for Wazemmes<Backend> {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
 }
 
-impl ShmHandler for Wazemmes {
+impl<Backend> ShmHandler for Wazemmes<Backend> {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
 
-delegate_compositor!(Wazemmes);
-delegate_shm!(Wazemmes);
+delegate_compositor!(@<BackendData: 'static> Wazemmes<BackendData>);
+delegate_shm!(@<BackendData: 'static> Wazemmes<BackendData>);

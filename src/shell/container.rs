@@ -2,7 +2,6 @@ use crate::shell::tree::ContainerRef;
 use crate::shell::window::WindowWarp;
 use smithay::desktop::Space;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::Size;
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use std::cell::RefCell;
@@ -150,6 +149,8 @@ impl Container {
         }
     }
 
+    // Fully redraw a container, its window an children containers
+    // Call this on the root of the tree to refresh a workspace
     pub fn redraw(&self, space: &mut Space) {
         println!("Redraw container {}", self.id);
         let surface_len = self.windows.len();
@@ -167,9 +168,7 @@ impl Container {
 
         for (idx, window) in self.windows.iter().enumerate() {
             println!("Configuring surface in container");
-            window
-                .get_toplevel()
-                .with_pending_state(|state| state.size = Some(Size::from(window_size)));
+            window.resize(window_size);
 
             if idx > 0 {
                 match self.layout {
@@ -184,17 +183,13 @@ impl Container {
             let surfaces_nth = self.windows.len() - 1;
             let activate = idx == surfaces_nth;
 
-            window.get_toplevel().with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Resizing);
-                state.size = Some(Size::from(window_size))
-            });
-
+            window.resize(window_size);
             window.get_toplevel().send_configure();
             space.map_window(window.get(), location, None, activate);
 
-            if let Some(parent) = &self.parent {
-                let parent = parent.borrow_mut();
-                parent.redraw(space);
+            for child in &self.childs {
+                let child = child.borrow();
+                child.redraw(space);
             }
         }
     }

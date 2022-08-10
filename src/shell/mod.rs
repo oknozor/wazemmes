@@ -1,13 +1,31 @@
 use crate::shell::workspace::WorkspaceRef;
 use crate::Wazemmes;
+use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;
+
+use std::cell::RefCell;
 
 pub mod container;
 pub mod tree;
 pub mod window;
 pub mod workspace;
 
-impl Wazemmes {
+#[derive(Default)]
+pub struct FullscreenSurface(RefCell<Option<Window>>);
+
+impl FullscreenSurface {
+    pub fn set(&self, window: Window) {
+        *self.0.borrow_mut() = Some(window);
+    }
+    pub fn get(&self) -> Option<Window> {
+        self.0.borrow().clone()
+    }
+    pub fn clear(&self) -> Option<Window> {
+        self.0.borrow_mut().take()
+    }
+}
+
+impl<Backend> Wazemmes<Backend> {
     pub fn get_current_workspace(&self) -> WorkspaceRef {
         let current = &self.current_workspace;
         self.workspaces

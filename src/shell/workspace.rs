@@ -54,7 +54,8 @@ impl Workspace {
     pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
         println!("Drawing all windows in workspace");
         let root = self.tree.root();
-        root.borrow().redraw(space);
+        let root = root.borrow();
+        root.redraw(space);
         space.refresh(dh);
     }
 }

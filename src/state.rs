@@ -1,39 +1,51 @@
 use crate::shell::container::ContainerLayout;
 use crate::shell::workspace::WorkspaceRef;
-use crate::CallLoopData;
+use crate::{CallLoopData, WinitData};
 use slog::Logger;
-use smithay::desktop::{Space, WindowSurfaceType};
+use smithay::desktop::{PopupManager, Space, WindowSurfaceType};
 use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction};
+use smithay::reexports::calloop::{Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::Display;
+use smithay::reexports::wayland_server::{Display, Resource};
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::CompositorState;
-use smithay::wayland::data_device::DataDeviceState;
-use smithay::wayland::output::OutputManagerState;
-use smithay::wayland::seat::{PointerHandle, Seat, SeatState};
+use smithay::wayland::data_device::{set_data_device_focus, DataDeviceState};
+use smithay::wayland::output::{Output, OutputManagerState};
+use smithay::wayland::primary_selection::{set_primary_focus, PrimarySelectionState};
+use smithay::wayland::seat::{CursorImageStatus, PointerHandle, Seat, SeatState, XkbConfig};
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::socket::ListeningSocketSource;
+use smithay::wayland::tablet_manager::TabletSeatTrait;
+
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
-pub struct Wazemmes {
+pub struct Wazemmes<BackendData: 'static> {
+    pub backend_data: BackendData,
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
     pub space: Space,
-    pub loop_signal: LoopSignal,
     pub log: Logger,
 
+    // Desktop
+    pub popups: PopupManager,
+
     // Smithay State
+    pub running: Arc<AtomicBool>,
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
-    pub seat_state: SeatState<Wazemmes>,
+    pub seat_state: SeatState<Wazemmes<BackendData>>,
     pub data_device_state: DataDeviceState,
+    pub primary_selection_state: PrimarySelectionState,
+    pub cursor_status: Arc<Mutex<CursorImageStatus>>,
+    pub dnd_icon: Option<WlSurface>,
+    pub pointer_location: Point<f64, Logical>,
 
     // Tree
     pub workspaces: HashMap<u8, WorkspaceRef>,
@@ -44,109 +56,100 @@ pub struct Wazemmes {
     pub seat: Seat<Self>,
 }
 
-impl Wazemmes {
+impl<B: Backend> Wazemmes<B> {
     pub fn new(
-        event_loop: &mut EventLoop<CallLoopData>,
+        handle: LoopHandle<CallLoopData<WinitData>>,
         display: &mut Display<Self>,
+        backend_data: B,
         log: Logger,
     ) -> Self {
-        let start_time = std::time::Instant::now();
-
-        let dh = display.handle();
-
-        let compositor_state = CompositorState::new::<Self, _>(&dh, log.clone());
-        let xdg_shell_state = XdgShellState::new::<Self, _>(&dh, log.clone());
-        let shm_state = ShmState::new::<Self, _>(&dh, vec![], log.clone());
-        let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
-        let seat_state = SeatState::new();
-        let data_device_state = DataDeviceState::new::<Self, _>(&dh, log.clone());
-
-        // A seat is a group of keyboards, pointer and touch devices.
-        // A seat typically has a pointer and maintains a keyboard focus and a pointer focus.
-        let mut seat: Seat<Self> = Seat::new(&dh, "winit", log.clone());
-
-        // Notify clients that we have a keyboard, for the sake of the example we assume that keyboard is always present.
-        // You may want to track keyboard hot-plug in real compositor.
-        seat.add_keyboard(Default::default(), 200, 200, |_, _| {})
-            .unwrap();
-
-        // Notify clients that we have a pointer (mouse)
-        // Here we assume that there is always pointer plugged in
-        seat.add_pointer(|_| {});
-
-        // A space represents a two-dimensional plane. Windows and Outputs can be mapped onto it.
-        //
-        // Windows get a position and stacking order through mapping.
-        // Outputs become views of a part of the Space and can be rendered via Space::render_output.
-        let space = Space::new(log.clone());
-
-        let socket_name = Self::init_wayland_listener(display, event_loop, log.clone());
-
-        // Get the loop signal, used to stop the event loop
-        let loop_signal = event_loop.get_signal();
-
-        // Tree
-        let workspaces = HashMap::new();
-
-        Self {
-            start_time,
-            space,
-            loop_signal,
-            socket_name,
-            log,
-            compositor_state,
-            xdg_shell_state,
-            shm_state,
-            output_manager_state,
-            seat_state,
-            data_device_state,
-            next_layout: None,
-            workspaces,
-            seat,
-            current_workspace: 0,
-        }
-    }
-
-    fn init_wayland_listener(
-        display: &mut Display<Wazemmes>,
-        event_loop: &mut EventLoop<CallLoopData>,
-        log: Logger,
-    ) -> OsString {
-        // Creates a new listening socket, automatically choosing the next available `wayland` socket name.
-        let listening_socket = ListeningSocketSource::new_auto(log).unwrap();
-
-        // Get the name of the listening socket.
-        // Clients will connect to this socket.
-        let socket_name = listening_socket.socket_name().to_os_string();
-
-        let handle = event_loop.handle();
-
-        event_loop
-            .handle()
-            .insert_source(listening_socket, move |client_stream, _, state| {
-                // Inside the callback, you should insert the client into the display.
-                //
-                // You may also associate some data with the client when inserting the client.
-                state
-                    .display
-                    .handle()
-                    .insert_client(client_stream, Arc::new(ClientState))
-                    .unwrap();
-            })
-            .expect("Failed to init the wayland event source.");
-
-        // You also need to add the display itself to the event loop, so that client events will be processed by wayland-server.
+        // init wayland clients
+        let socket_name = {
+            let source = ListeningSocketSource::new_auto(log.clone()).unwrap();
+            let socket_name = source.socket_name().to_string_lossy().into_owned();
+            handle
+                .insert_source(source, |client_stream, _, data| {
+                    if let Err(err) = data
+                        .display
+                        .handle()
+                        .insert_client(client_stream, Arc::new(ClientState))
+                    {
+                        slog::warn!(data.state.log, "Error adding wayland client: {}", err);
+                    };
+                })
+                .expect("Failed to init wayland socket source");
+            slog::info!(log, "Listening on wayland socket"; "name" => socket_name.clone());
+            ::std::env::set_var("WAYLAND_DISPLAY", &socket_name);
+            socket_name
+        };
         handle
             .insert_source(
                 Generic::new(display.backend().poll_fd(), Interest::READ, Mode::Level),
-                |_, _, state| {
-                    state.display.dispatch_clients(&mut state.state).unwrap();
+                |_, _, data| {
+                    data.display.dispatch_clients(&mut data.state).unwrap();
                     Ok(PostAction::Continue)
                 },
             )
-            .unwrap();
+            .expect("Failed to init wayland server source");
 
-        socket_name
+        // init globals
+        let dh = display.handle();
+        let compositor_state = CompositorState::new::<Self, _>(&dh, log.clone());
+        let data_device_state = DataDeviceState::new::<Self, _>(&dh, log.clone());
+        let output_manager_state = OutputManagerState::new();
+        let seat_state = SeatState::new();
+        let shm_state = ShmState::new::<Self, _>(&dh, vec![], log.clone());
+        let xdg_shell_state = XdgShellState::new::<Self, _>(&dh, log.clone());
+        let primary_selection_state = PrimarySelectionState::new::<Self, _>(&dh, log.clone());
+
+        // init input
+        let seat_name = backend_data.seat_name();
+        let mut seat = Seat::new(&dh, seat_name, log.clone());
+
+        let cursor_status = Arc::new(Mutex::new(CursorImageStatus::Default));
+        let cursor_status2 = cursor_status.clone();
+        seat.add_pointer(move |new_status| *cursor_status2.lock().unwrap() = new_status);
+
+        seat.add_keyboard(XkbConfig::default(), 200, 25, move |seat, surface| {
+            let focus = surface.and_then(|s| dh.get_client(s.id()).ok());
+            let focus2 = surface.and_then(|s| dh.get_client(s.id()).ok());
+            set_data_device_focus(&dh, seat, focus);
+            set_primary_focus(&dh, seat, focus2);
+        })
+        .expect("Failed to initialize the keyboard");
+
+        let cursor_status3 = cursor_status.clone();
+        seat.tablet_seat()
+            .on_cursor_surface(move |_tool, new_status| {
+                // TODO: tablet tools should have their own cursors
+                *cursor_status3.lock().unwrap() = new_status;
+            });
+
+        let popup_manager = PopupManager::new(log.clone());
+
+        Wazemmes {
+            backend_data,
+            socket_name: socket_name.into(),
+            space: Space::new(log.clone()),
+            compositor_state,
+            data_device_state,
+            primary_selection_state,
+            cursor_status,
+            dnd_icon: None,
+            pointer_location: (0.0, 0.0).into(),
+            workspaces: HashMap::new(),
+            current_workspace: 0,
+            output_manager_state,
+            seat_state,
+            shm_state,
+            xdg_shell_state,
+            log,
+            seat,
+            start_time: std::time::Instant::now(),
+            next_layout: None,
+            running: Arc::new(AtomicBool::new(true)),
+            popups: popup_manager,
+        }
     }
 
     pub fn surface_under_pointer(
@@ -165,4 +168,10 @@ pub struct ClientState;
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+}
+
+pub trait Backend {
+    fn seat_name(&self) -> String;
+    fn reset_buffers(&mut self, output: &Output);
+    fn early_import(&mut self, surface: &WlSurface);
 }
