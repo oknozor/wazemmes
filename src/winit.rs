@@ -20,6 +20,7 @@ use smithay::{
 use slog::Logger;
 
 use crate::{CallLoopData, Wazemmes};
+use crate::shell::workspace::WorkspaceRef;
 
 pub fn init_winit(
     event_loop: &mut EventLoop<CallLoopData>,
@@ -46,6 +47,7 @@ pub fn init_winit(
         },
         log.clone(),
     );
+
     let _global = output.create_global::<Wazemmes>(&display.handle());
     output.change_current_state(
         Some(mode),
@@ -53,15 +55,18 @@ pub fn init_winit(
         None,
         Some((0, 0).into()),
     );
+
     output.set_preferred(mode);
-
     state.space.map_output(&output, (0, 0));
-
     std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
-
     let mut full_redraw = 0u8;
-
     let timer = Timer::immediate();
+
+    // Initialize workspace zero
+    let output = state.space.outputs().next().unwrap().to_owned();
+    let workspace = WorkspaceRef::new(output.clone(), &state.space);
+    state.workspaces.insert(0, workspace);
+
     event_loop
         .handle()
         .insert_source(timer, move |_, _, data| {

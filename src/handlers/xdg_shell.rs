@@ -19,8 +19,9 @@ use smithay::{
         Serial,
     },
 };
+
 use smithay::wayland::SERIAL_COUNTER;
-use crate::{Tree, Wazemmes};
+use crate::Wazemmes;
 
 #[derive(Debug, Copy, Clone)]
 struct WindowId(u32);
@@ -31,22 +32,20 @@ impl XdgShellHandler for Wazemmes {
     }
 
     fn new_toplevel(&mut self, dh: &DisplayHandle, surface: ToplevelSurface) {
-        if self.tree.is_none() {
-            let output = self.space.outputs().next().unwrap();
-            let geo = self.space.output_geometry(&output).unwrap();
-            self.tree = Some(Tree::new(&output, geo))
-        }
+        let workspace = self.get_current_workspace();
+        let mut workspace = workspace.get_mut();
 
         let container = if let Some(layout) = self.next_layout {
             self.next_layout = None;
-            self.tree().create_container(layout)
+            workspace.tree.create_container(layout)
         } else {
-            self.tree().get_container_focused()
+            workspace.tree.get_container_focused()
         };
 
         let mut container = container.borrow_mut();
         container.push_window(surface.clone(), &mut self.space);
 
+        // Grab keyboard focus
         let handle = self
             .seat
             .get_keyboard()

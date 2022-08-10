@@ -1,5 +1,4 @@
 use crate::shell::container::ContainerLayout;
-use crate::shell::tree::Tree;
 use crate::CallLoopData;
 use slog::Logger;
 use smithay::{
@@ -24,11 +23,12 @@ use smithay::{
     },
 };
 use std::{ffi::OsString, sync::Arc};
+use std::collections::HashMap;
+use crate::shell::workspace::{Workspace, WorkspaceRef};
 
 pub struct Wazemmes {
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
-
     pub space: Space,
     pub loop_signal: LoopSignal,
     pub log: Logger,
@@ -41,11 +41,10 @@ pub struct Wazemmes {
     pub seat_state: SeatState<Wazemmes>,
     pub data_device_state: DataDeviceState,
 
-    // Input
-    pub next_layout: Option<ContainerLayout>,
-
     // Tree
-    pub tree: Option<Tree>,
+    pub workspaces: HashMap<u8, WorkspaceRef>,
+    pub current_workspace: u8,
+    pub next_layout: Option<ContainerLayout>,
 
     // Seat
     pub seat: Seat<Self>,
@@ -92,13 +91,14 @@ impl Wazemmes {
         // Get the loop signal, used to stop the event loop
         let loop_signal = event_loop.get_signal();
 
+        // Tree
+        let workspaces = HashMap::new();
+
         Self {
             start_time,
-
             space,
             loop_signal,
             socket_name,
-
             log,
             compositor_state,
             xdg_shell_state,
@@ -107,8 +107,9 @@ impl Wazemmes {
             seat_state,
             data_device_state,
             next_layout: None,
-            tree: None,
+            workspaces,
             seat,
+            current_workspace: 0,
         }
     }
 
@@ -162,10 +163,6 @@ impl Wazemmes {
         self.space
             .surface_under(pos, WindowSurfaceType::all())
             .map(|(_, surface, location)| (surface, location))
-    }
-
-    pub fn tree(&mut self) -> &mut Tree {
-        self.tree.as_mut().expect("Tree should be initialized")
     }
 }
 

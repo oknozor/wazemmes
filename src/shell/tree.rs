@@ -4,21 +4,16 @@ use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::output::Output;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::slice::Iter;
+use smithay::reexports::ash::vk::Window;
+use crate::shell::window::WindowWarp;
 
 pub type ContainerRef = Rc<RefCell<Container>>;
 
-pub struct Focus {
-    container: Rc<RefCell<Container>>,
-}
-
-impl Focus {
-    fn init(root: Rc<RefCell<Container>>) -> Focus {
-        Self { container: root }
-    }
-}
-
+#[derive(Debug)]
 pub struct Tree {
-    focus: Focus,
+    root: Rc<RefCell<Container>>,
+    focus: Rc<RefCell<Container>>,
 }
 
 impl Tree {
@@ -32,22 +27,27 @@ impl Tree {
             output: output.clone(),
             parent: None,
             childs: vec![],
-            surfaces: vec![],
+            windows: vec![],
             layout: ContainerLayout::Horizontal,
         };
 
         let root = Rc::new(RefCell::new(root));
+        let focus = root.clone();
 
-        Self { focus: Focus::init(root) }
+        Self { root, focus }
+    }
+
+    pub fn root(&self) -> ContainerRef {
+        self.root.clone()
     }
 
     pub fn create_container(&mut self, layout: ContainerLayout) -> ContainerRef {
         let child = {
-            let mut current = self.focus.container.borrow_mut();
-            current.create_child(layout, self.focus.container.clone())
+            let mut current = self.focus.borrow_mut();
+            current.create_child(layout, self.focus.clone())
         };
 
-        self.focus.container = child.clone();
+        self.focus = child.clone();
         child
     }
 
@@ -56,7 +56,7 @@ impl Tree {
         let current = current.borrow();
         let id = current.id;
         if let Some(parent) = &current.parent {
-            self.focus.container = parent.clone();
+            self.focus = parent.clone();
             let mut parent = parent.borrow_mut();
             let removed: Vec<ContainerRef> = parent
                 .childs
@@ -68,6 +68,18 @@ impl Tree {
     }
 
     pub fn get_container_focused(&self) -> ContainerRef {
-        self.focus.container.clone()
+        self.focus.clone()
+    }
+
+    pub fn flatten_window(&self) -> Vec<WindowWarp> {
+        let root = self.root.borrow();
+        let mut windows = root.windows.clone();
+
+        for child in &root.childs {
+            let window = child.borrow().flatten_window();
+            windows.extend_from_slice(window.as_slice());
+        }
+
+        windows
     }
 }
