@@ -1,27 +1,20 @@
-use crate::shell::container::{ContainerLayout, ContainerState};
 use slog::debug;
-use smithay::backend::input::{
-    Axis, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerAxisEvent,
-    PointerButtonEvent, PointerMotionAbsoluteEvent,
-};
-use smithay::reexports::wayland_server::protocol::wl_pointer;
+use smithay::backend::input::{Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent};
+
 use smithay::reexports::wayland_server::{Display, DisplayHandle};
-use smithay::wayland::seat::{AxisFrame, ButtonEvent, FilterResult, MotionEvent};
+use smithay::wayland::seat::FilterResult;
 use smithay::wayland::SERIAL_COUNTER;
 
-use crate::shell::tree::ContainerRef;
 use crate::state::Wazemmes;
 use crate::Backend;
+use handlers::Direction;
 use smithay::wayland::seat::keysyms as xkb;
 
 mod handlers;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum KeyAction {
-    MoveFocusLeft,
-    MoveFocusUp,
-    MoveFocusRight,
-    MoveFocusDown,
+    MoveFocus(Direction),
     Run(String),
     MoveToWorkspace(u8),
     LayoutVertical,
@@ -52,10 +45,7 @@ impl<B: Backend> Wazemmes<B> {
                     KeyAction::MoveToWorkspace(num) => {
                         self.move_to_workspace(num, &display.handle())
                     }
-                    KeyAction::MoveFocusLeft => {}
-                    KeyAction::MoveFocusUp => {}
-                    KeyAction::MoveFocusRight => {}
-                    KeyAction::MoveFocusDown => {}
+                    KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
                 }
             }
             InputEvent::PointerMotion { .. } => {}
@@ -101,10 +91,18 @@ impl<B: Backend> Wazemmes<B> {
                     }
                 } else if modifiers.ctrl {
                     match keysyms {
-                        [xkb::KEY_h] => FilterResult::Intercept(KeyAction::MoveFocusLeft),
-                        [xkb::KEY_j] => FilterResult::Intercept(KeyAction::MoveFocusDown),
-                        [xkb::KEY_k] => FilterResult::Intercept(KeyAction::MoveFocusUp),
-                        [xkb::KEY_l] => FilterResult::Intercept(KeyAction::MoveFocusRight),
+                        [xkb::KEY_h] => {
+                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Left))
+                        }
+                        [xkb::KEY_j] => {
+                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Down))
+                        }
+                        [xkb::KEY_k] => {
+                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Up))
+                        }
+                        [xkb::KEY_l] => {
+                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Right))
+                        }
                         _ => FilterResult::Forward,
                     }
                 } else {

@@ -2,7 +2,7 @@ use crate::Tree;
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::output::Output;
-use std::cell::{RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -28,6 +28,10 @@ impl WorkspaceRef {
     pub fn get_mut(&self) -> RefMut<'_, Workspace> {
         self.inner.borrow_mut()
     }
+
+    pub fn get(&self) -> Ref<'_, Workspace> {
+        self.inner.borrow()
+    }
 }
 
 #[derive(Debug)]
@@ -45,16 +49,14 @@ impl Workspace {
     }
 
     pub fn unmap_all(&self, space: &mut Space) {
-        println!("Clearing all windows in workspace");
         for window in self.tree.flatten_window() {
             space.unmap_window(window.get());
         }
     }
 
     pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
-        println!("Drawing all windows in workspace");
         let root = self.tree.root();
-        let root = root.borrow();
+        let root = root.get();
         root.redraw(space);
         space.refresh(dh);
     }

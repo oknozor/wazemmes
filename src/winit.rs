@@ -88,7 +88,7 @@ pub fn init_winit(log: Logger) {
 
     state
         .workspaces
-        .insert(0, WorkspaceRef::new(output.clone(), &mut state.space));
+        .insert(0, WorkspaceRef::new(output.clone(), &state.space));
 
     while state.running.load(Ordering::SeqCst) {
         if winit

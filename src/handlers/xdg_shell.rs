@@ -16,9 +16,6 @@ use std::sync::Mutex;
 use crate::Wazemmes;
 use smithay::wayland::SERIAL_COUNTER;
 
-#[derive(Debug, Copy, Clone)]
-struct WindowId(u32);
-
 impl<Backend> XdgShellHandler for Wazemmes<Backend> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
@@ -35,8 +32,11 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
             workspace.tree.get_container_focused()
         };
 
-        let mut container = container.borrow_mut();
-        container.push_window(surface.clone(), &mut self.space);
+        {
+            let mut container = container.get_mut();
+            let idx = container.push_window(surface.clone());
+            container.set_focus(idx);
+        }
 
         // Grab keyboard focus
         let handle = self
@@ -46,6 +46,9 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
 
         let serial = SERIAL_COUNTER.next_serial();
         handle.set_focus(dh, Some(surface.wl_surface()), serial);
+        let root = workspace.tree.root();
+        let root = root.get();
+        root.redraw(&mut self.space);
     }
 
     fn new_popup(
@@ -82,7 +85,6 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
                 state.states.set(xdg_toplevel::State::Resizing);
             });
 
-            println!("resize ?");
             surface.send_configure();
         }
     }
