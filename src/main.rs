@@ -3,7 +3,6 @@
 
 extern crate core;
 
-use crate::shell::tree::Tree;
 use crate::state::{Backend, Wazemmes};
 use crate::winit::WinitData;
 use slog::{o, Drain};

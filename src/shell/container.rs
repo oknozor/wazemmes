@@ -7,8 +7,12 @@ use smithay::desktop::Space;
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use std::cell::{Ref, RefCell, RefMut};
-use std::collections::HashMap;
+
+
+
 use std::rc::Rc;
+
+use crate::shell::nodemap::NodeMap;
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {
@@ -33,12 +37,25 @@ impl ContainerRef {
     pub fn container_having_window(&self, id: u32) -> Option<ContainerRef> {
         let this = self.get();
 
-        if this.childs.contains_key(&id) {
+        if this.nodes.contains(&id) {
             Some(self.clone())
         } else {
-            this.iter_containers()
+            this.nodes.iter_containers()
                 .find_map(|c| c.container_having_window(id))
         }
+    }
+
+    pub fn find_container_by_id(&self, id: &u32) -> Option<ContainerRef> {
+        let this = self.get();
+        if &this.id == id {
+            Some(self.clone())
+        } else {
+            this.nodes.items.get(id)
+                .and_then(|node| node.try_into().ok())
+        }.or_else(|| {
+            this.nodes.iter_containers()
+                .find_map(|c| c.find_container_by_id(id))
+        })
     }
 }
 
@@ -51,9 +68,8 @@ pub struct Container {
     pub height: i32,
     pub output: Output,
     pub parent: Option<ContainerRef>,
-    pub childs: HashMap<u32, Node>,
+    pub nodes: NodeMap,
     pub layout: ContainerLayout,
-    pub focus: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -73,7 +89,7 @@ impl Container {
     pub fn state(&self) -> ContainerState {
         if self.has_windows() {
             ContainerState::HasWindows
-        } else if self.has_child_containers() {
+        } else if self.has_container() {
             ContainerState::HasContainersOnly
         } else {
             ContainerState::Empty
@@ -81,32 +97,31 @@ impl Container {
     }
 
     fn has_windows(&self) -> bool {
-        self.iter_windows().count() > 0
+        self.nodes.has_window()
     }
 
-    pub fn has_child_containers(&self) -> bool {
-        self.childs.values().any(|c| c.is_container())
+    pub fn has_container(&self) -> bool {
+        self.nodes.has_container()
     }
 
     pub fn get_focused_window(&self) -> Option<(u32, &'_ WindowWarp)> {
-        if let Some(focus) = self.focus {
-            let window = self.childs.get(&focus);
-            window.map(|window| (focus, window.try_into().unwrap()))
+        if let Some(focus) = self.nodes.get_focused() {
+            let window = self.nodes.get(focus);
+            window.map(|window| (*focus, window.try_into().unwrap()))
         } else {
             None
         }
     }
 
-    // Push a window to the tree and return its index
-    pub fn push_window(&mut self, surface: ToplevelSurface) -> u32 {
+    // Push a window to the tree and update the focus
+    pub fn push_window(&mut self, surface: ToplevelSurface) {
         let window = WindowWarp::new(surface);
         let id = window.id();
-        self.childs.insert(id, Node::Window(window));
-        id
+        self.nodes.insert(id, Node::Window(window));
     }
 
     pub fn create_child(&mut self, layout: ContainerLayout, parent: ContainerRef) -> ContainerRef {
-        if self.iter_windows().count() <= 1 {
+        if self.nodes.iter_windows().count() <= 1 {
             self.layout = layout;
             parent
         } else {
@@ -128,23 +143,22 @@ impl Container {
                 height,
                 output: self.output.clone(),
                 parent: Some(parent),
-                childs: HashMap::new(),
+                nodes: NodeMap::default(),
                 layout,
-                focus: None,
             };
 
             let id = self.get_focused_window().map(|(id, _)| id);
 
             if let Some(id) = id {
-                let window = self.childs.remove(&id);
+                let window = self.nodes.remove(&id);
                 if let Some(window) = window {
-                    child.childs.insert(id, window);
+                    child.nodes.insert(id, window);
                 }
             }
 
             let id = child.id;
             let child = ContainerRef::new(child);
-            self.childs.insert(id, Node::Container(child.clone()));
+            self.nodes.insert(id, Node::Container(child.clone()));
             child
         }
     }
@@ -155,22 +169,19 @@ impl Container {
             idx
         });
 
-        if let Some(idx) = idx {
-            let _surface = self.childs.remove(&idx);
-
-            if self.iter_windows().count() == 0 {
-                self.focus = None
-            } else if self.childs.get(&(idx - 1)).is_some() {
-                // Fixme: previous window
-                // self.focus = Some(idx - 1)
-            };
+        if let Some(id) = idx {
+            let _surface = self.nodes.remove(&id);
         }
     }
 
     // Fully redraw a container, its window an children containers
     // Call this on the root of the tree to refresh a workspace
     pub fn redraw(&mut self, space: &mut Space) {
-        let len = self.childs.len();
+        if self.nodes.len() == 0 {
+            return;
+        }
+
+        let len = self.nodes.len();
         let non_zero_length = if len == 0 { 1 } else { len };
         let gaps = CONFIG.gaps as i32;
         let total_gaps = (len - 1) as i32 * gaps;
@@ -192,7 +203,8 @@ impl Container {
 
         self.reparent_orphans();
 
-        for (idx, (id, node)) in self.childs.iter().enumerate() {
+
+        for (idx, id, node) in self.nodes.iter_spine() {
             if idx > 0 {
                 match self.layout {
                     ContainerLayout::Vertical => y += height + gaps,
@@ -210,7 +222,7 @@ impl Container {
                     child.redraw(space);
                 }
                 Node::Window(window) => {
-                    let activate = Some(*id) == self.focus;
+                    let activate = Some(*id) == self.get_focused_window().map(|(id, _w)| id);
                     window.configure(space, (width, height), activate);
                     space.map_window(window.get(), (x, y), None, activate);
                 }
@@ -221,21 +233,21 @@ impl Container {
     fn reparent_orphans(&mut self) {
         let mut orphans = vec![];
 
-        for child in self.iter_containers() {
+        for child in self.nodes.iter_containers() {
             let mut child = child.get_mut();
-            if child.iter_windows().count() == 0 {
-                let children = child.drain_containers();
+            if child.nodes.iter_windows().count() == 0 {
+                let children = child.nodes.drain_containers();
                 orphans.extend_from_slice(children.as_slice());
             }
         }
 
-        self.childs.extend(orphans);
+        self.nodes.extend(orphans);
     }
 
     pub fn flatten_window(&self) -> Vec<WindowWarp> {
-        let mut windows: Vec<WindowWarp> = self.iter_windows().cloned().collect();
+        let mut windows: Vec<WindowWarp> = self.nodes.iter_windows().cloned().collect();
 
-        for child in self.iter_containers() {
+        for child in self.nodes.iter_containers() {
             let child = child.get();
             windows.extend(child.flatten_window())
         }
@@ -243,35 +255,9 @@ impl Container {
         windows
     }
 
-    pub fn set_focus(&mut self, window_idx: u32) {
-        if self.childs.get(&window_idx).is_some() {
-            self.focus = Some(window_idx)
+    pub fn set_focus(&mut self, window_id: u32) {
+        if self.nodes.get(&window_id).is_some() {
+            self.nodes.set_focus(window_id)
         }
-    }
-
-    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWarp> {
-        self.childs.values().filter_map(|node| match node {
-            Node::Container(_) => None,
-            Node::Window(w) => Some(w),
-        })
-    }
-
-    pub fn window_count(&self) -> i32 {
-        self.iter_windows().count() as i32
-    }
-
-    pub fn container_count(&self) -> i32 {
-        self.iter_containers().count() as i32
-    }
-
-    pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
-        self.childs.values().filter_map(|node| match node {
-            Node::Container(c) => Some(c),
-            Node::Window(_) => None,
-        })
-    }
-
-    fn drain_containers(&mut self) -> Vec<(u32, Node)> {
-        self.childs.drain_filter(|_k, v| v.is_container()).collect()
     }
 }

@@ -25,7 +25,6 @@ impl<B: Backend> Wazemmes<B> {
             let container = self
                 .get_current_workspace()
                 .get_mut()
-                .tree
                 .get_container_focused();
             let mut container = container.get_mut();
             debug!("Closing window in container: {}", container.id);
@@ -35,33 +34,66 @@ impl<B: Backend> Wazemmes<B> {
 
         match state {
             ContainerState::Empty => {
-                println!("empty container removed");
-                self.get_current_workspace().get_mut().tree.pop();
+                debug!("Closing empty container");
+                let ws = self.get_current_workspace();
+                let mut ws = ws.get_mut();
+                let focused = ws.get_container_focused().get().id;
+                ws.pop_container();
+                debug!("Container removed {focused}");
+                let focused = ws.get_container_focused();
+                let focused = focused.get();
+                debug!("New focused id {}", focused.id);
+                println!("{:?}", focused.nodes.focus_idx);
+                println!("{:?}", focused.nodes.spine);
+                let window = focused.get_focused_window();
+                if let Some((_id, window)) = window {
+                    self.set_window_focus(&mut display.handle(), SERIAL_COUNTER.next_serial(), window.get());
+                }
             }
             ContainerState::HasContainersOnly => {
+                debug!("Draining window from container");
                 let container = {
                     let ws = self.get_current_workspace();
-                    let tree = &ws.get_mut().tree;
-                    tree.get_container_focused()
+                    let ws = &ws.get_mut();
+                    ws.get_container_focused()
                 };
 
                 let children: Option<Vec<(u32, Node)>> = {
                     let mut container = container.get_mut();
                     if container.parent.is_some() {
-                        Some(container.childs.drain().collect())
+                        Some(container.nodes.drain_all())
                     } else {
                         None
                     }
                 };
 
                 let mut container = container.get_mut();
+                let id = container.id;
                 if let (Some(parent), Some(children)) = (&mut container.parent, children) {
                     let mut parent = parent.get_mut();
-                    parent.childs.extend(children);
-                    debug!("Reparent container child");
+                    parent.nodes.remove(&id);
+                    parent.nodes.extend(children);
+                }
+
+                let ws = self.get_current_workspace();
+                let ws = ws.get_mut();
+                let focused = ws.get_container_focused();
+                let focused = focused.get();
+                let window = focused.get_focused_window();
+                if let Some((_id, window)) = window {
+                    self.set_window_focus(&mut display.handle(), SERIAL_COUNTER.next_serial(), window.get());
                 }
             }
             ContainerState::HasWindows => {
+                let ws = self.get_current_workspace();
+                let ws = ws.get_mut();
+                let focused = ws.get_container_focused();
+                let focused = focused.get();
+                let window = focused.get_focused_window();
+
+                if let Some((_id, window)) = window {
+                    self.set_window_focus(&mut display.handle(), SERIAL_COUNTER.next_serial(), window.get());
+                }
                 debug!("Cannot remove non empty container");
             }
         };
@@ -71,7 +103,7 @@ impl<B: Backend> Wazemmes<B> {
         let workspace = workspace.get();
 
         {
-            let container = workspace.tree.get_container_focused();
+            let container = workspace.get_container_focused();
 
             let container = container.get_mut();
 
@@ -90,9 +122,9 @@ impl<B: Backend> Wazemmes<B> {
             }
         }
 
-        let root = workspace.tree.root();
+        let root = workspace.root();
         let mut root = root.get_mut();
-        if !root.has_child_containers() {
+        if !root.has_container() {
             let output = self.space.outputs().next().unwrap();
             let geo = self.space.output_geometry(output).unwrap();
             root.height = geo.size.h;
@@ -157,9 +189,13 @@ impl<B: Backend> Wazemmes<B> {
         if wl_pointer::ButtonState::Pressed == button_state && !pointer.is_grabbed() {
             if let Some(window) = self.space.window_under(pointer.current_location()).cloned() {
                 let id = window.user_data().get::<WindowId>().unwrap();
-
+                let ws = self.get_current_workspace();
+                let mut ws  =ws.get_mut();
+                let container = ws.root().container_having_window(id.get())
+                    .unwrap();
                 self.set_window_focus(dh, serial, &window);
-                self.set_container_focus(id.get());
+                let focused_id = container.get().id;
+                ws.set_container_focused(focused_id);
             } else {
                 self.space.windows().for_each(|window| {
                     window.set_activated(false);
@@ -181,19 +217,6 @@ impl<B: Backend> Wazemmes<B> {
                 time: event.time(),
             },
         );
-    }
-
-    fn set_container_focus(&self, window_id: u32) {
-        let ws = self.get_current_workspace();
-        let tree = &mut ws.get_mut().tree;
-        let container = tree
-            .root()
-            .container_having_window(window_id)
-            .expect("Window should have a container");
-
-        container.get_mut().set_focus(window_id);
-
-        tree.set_container_focused(container);
     }
 
     fn set_window_focus(&mut self, dh: &mut DisplayHandle, serial: Serial, window: &Window) {
@@ -250,7 +273,12 @@ impl<B: Backend> Wazemmes<B> {
         if let Some(window) = window {
             let serial = SERIAL_COUNTER.next_serial();
             let id = window.user_data().get::<WindowId>().unwrap().get();
-            self.set_container_focus(id);
+            let ws = self.get_current_workspace();
+            let mut ws = ws.get_mut();
+            let container = ws.root()
+                .container_having_window(id).unwrap();
+            let focused_id = container.get().id;
+            ws.set_container_focused(focused_id);
             self.set_window_focus(&mut display.handle(), serial, &window);
         }
     }
@@ -258,7 +286,7 @@ impl<B: Backend> Wazemmes<B> {
     fn scan_window(&mut self, direction: Direction) -> Option<Window> {
         let ws = self.get_current_workspace();
         let ws = ws.get();
-        let container = ws.tree.get_container_focused();
+        let container = ws.get_container_focused();
         let container = container.get();
         let mut window = None;
 

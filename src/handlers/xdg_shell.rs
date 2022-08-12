@@ -27,15 +27,14 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
 
         let container = if let Some(layout) = self.next_layout {
             self.next_layout = None;
-            workspace.tree.create_container(layout)
+            workspace.create_container(layout)
         } else {
-            workspace.tree.get_container_focused()
+            workspace.get_container_focused()
         };
 
         {
             let mut container = container.get_mut();
-            let idx = container.push_window(surface.clone());
-            container.set_focus(idx);
+            container.push_window(surface.clone());
         }
 
         // Grab keyboard focus
@@ -46,7 +45,7 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
 
         let serial = SERIAL_COUNTER.next_serial();
         handle.set_focus(dh, Some(surface.wl_surface()), serial);
-        let root = workspace.tree.root();
+        let root = workspace.root();
         let mut root = root.get_mut();
         root.redraw(&mut self.space);
     }

@@ -25,6 +25,18 @@ impl TryInto<WindowWarp> for Node {
     }
 }
 
+impl TryInto<WindowWarp> for    &Node {
+    // TODO: this error
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<WindowWarp, Self::Error> {
+        match self {
+            Node::Container(_) => Err("tried to unwrap a window got a container"),
+            Node::Window(w) => Ok(w.clone()),
+        }
+    }
+}
+
 impl TryInto<ContainerRef> for Node {
     // TODO: this error
     type Error = &'static str;
@@ -32,6 +44,18 @@ impl TryInto<ContainerRef> for Node {
     fn try_into(self) -> Result<ContainerRef, Self::Error> {
         match self {
             Node::Container(c) => Ok(c),
+            Node::Window(_) => Err("tried to unwrap a container got a window"),
+        }
+    }
+}
+
+impl TryInto<ContainerRef> for &Node {
+    // TODO: this error
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<ContainerRef, Self::Error> {
+        match self {
+            Node::Container(c) => Ok(c.clone()),
             Node::Window(_) => Err("tried to unwrap a container got a window"),
         }
     }

@@ -7,9 +7,9 @@ use std::cell::RefCell;
 
 pub mod container;
 pub mod node;
-pub mod tree;
 pub mod window;
 pub mod workspace;
+pub mod nodemap;
 
 #[derive(Default)]
 pub struct FullscreenSurface(RefCell<Option<Window>>);
