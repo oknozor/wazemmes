@@ -84,7 +84,7 @@ impl Container {
         self.iter_windows().count() > 0
     }
 
-    fn has_child_containers(&self) -> bool {
+    pub fn has_child_containers(&self) -> bool {
         self.childs.values().any(|c| c.is_container())
     }
 

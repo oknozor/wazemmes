@@ -92,6 +92,12 @@ impl<B: Backend> Wazemmes<B> {
 
         let root = workspace.tree.root();
         let mut root = root.get_mut();
+        if !root.has_child_containers() {
+            let output = self.space.outputs().next().unwrap();
+            let geo = self.space.output_geometry(output).unwrap();
+            root.height = geo.size.h;
+            root.width = geo.size.w;
+        }
         root.redraw(&mut self.space);
     }
 
