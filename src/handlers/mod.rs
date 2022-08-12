@@ -1,4 +1,5 @@
 mod compositor;
+mod xdg_decoration;
 mod xdg_shell;
 
 use crate::Wazemmes;

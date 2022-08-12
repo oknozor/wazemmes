@@ -19,6 +19,7 @@ use smithay::wayland::shm::ShmState;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::wayland::tablet_manager::TabletSeatTrait;
 
+use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::sync::atomic::AtomicBool;
@@ -43,6 +44,7 @@ pub struct Wazemmes<BackendData: 'static> {
     pub seat_state: SeatState<Wazemmes<BackendData>>,
     pub data_device_state: DataDeviceState,
     pub primary_selection_state: PrimarySelectionState,
+    pub xdg_decoration_state: XdgDecorationState,
     pub cursor_status: Arc<Mutex<CursorImageStatus>>,
     pub dnd_icon: Option<WlSurface>,
     pub pointer_location: Point<f64, Logical>,
@@ -101,6 +103,7 @@ impl<B: Backend> Wazemmes<B> {
         let shm_state = ShmState::new::<Self, _>(&dh, vec![], log.clone());
         let xdg_shell_state = XdgShellState::new::<Self, _>(&dh, log.clone());
         let primary_selection_state = PrimarySelectionState::new::<Self, _>(&dh, log.clone());
+        let xdg_decoration_state = XdgDecorationState::new::<Self, _>(&dh, log.clone());
 
         // init input
         let seat_name = backend_data.seat_name();
@@ -134,6 +137,7 @@ impl<B: Backend> Wazemmes<B> {
             compositor_state,
             data_device_state,
             primary_selection_state,
+            xdg_decoration_state,
             cursor_status,
             dnd_icon: None,
             pointer_location: (0.0, 0.0).into(),
