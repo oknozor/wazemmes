@@ -47,7 +47,7 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
         let serial = SERIAL_COUNTER.next_serial();
         handle.set_focus(dh, Some(surface.wl_surface()), serial);
         let root = workspace.tree.root();
-        let root = root.get();
+        let mut root = root.get_mut();
         root.redraw(&mut self.space);
     }
 

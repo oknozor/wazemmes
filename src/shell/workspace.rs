@@ -56,7 +56,7 @@ impl Workspace {
 
     pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
         let root = self.tree.root();
-        let root = root.get();
+        let mut root = root.get_mut();
         root.redraw(space);
         space.refresh(dh);
     }

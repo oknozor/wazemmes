@@ -1,4 +1,5 @@
 #![feature(drain_filter)]
+#![feature(hash_drain_filter)]
 
 extern crate core;
 

@@ -1,11 +1,11 @@
-use crate::shell::container;
 use crate::shell::container::{Container, ContainerLayout, ContainerRef};
+use crate::shell::node;
 use crate::shell::window::WindowWarp;
 use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::output::Output;
 
+use crate::shell::node::Node;
 use std::collections::HashMap;
-
 
 #[derive(Debug)]
 pub struct Tree {
@@ -16,15 +16,14 @@ pub struct Tree {
 impl Tree {
     pub fn new(output: &Output, geometry: Rectangle<i32, Logical>) -> Tree {
         let root = Container {
-            id: container::id::get(),
+            id: node::id::get(),
             x: geometry.loc.x,
             y: geometry.loc.y,
             width: geometry.size.w,
             height: geometry.size.h,
             output: output.clone(),
             parent: None,
-            childs: vec![],
-            windows: HashMap::new(),
+            childs: HashMap::new(),
             layout: ContainerLayout::Horizontal,
             focus: None,
         };
@@ -59,8 +58,10 @@ impl Tree {
         if let Some(parent) = &current.parent {
             self.container_focused = parent.clone();
             let mut parent = parent.get_mut();
-            let removed: Vec<ContainerRef> =
-                parent.childs.drain_filter(|c| c.get().id == id).collect();
+            let removed: Vec<(u32, Node)> = parent
+                .childs
+                .drain_filter(|node_id, _node| *node_id == id)
+                .collect();
 
             println!("Removed from parent {:?}", removed);
         }
@@ -76,25 +77,13 @@ impl Tree {
 
     pub fn flatten_window(&self) -> Vec<WindowWarp> {
         let root = self.root.get();
-        let mut windows: Vec<WindowWarp> = root.windows.values().cloned().collect();
+        let mut windows: Vec<WindowWarp> = root.iter_windows().cloned().collect();
 
-        for child in &root.childs {
+        for child in root.iter_containers() {
             let window = child.get().flatten_window();
             windows.extend_from_slice(window.as_slice());
         }
 
         windows
-    }
-
-    pub fn flatten_containers(&self) -> Vec<ContainerRef> {
-        let root = self.root.get();
-        let mut root_children: Vec<ContainerRef> = root.childs.clone();
-
-        for child in &root.childs {
-            let children = child.get().flatten_containers();
-            root_children.extend_from_slice(children.as_slice());
-        }
-
-        root_children
     }
 }

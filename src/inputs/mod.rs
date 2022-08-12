@@ -89,7 +89,7 @@ impl<B: Backend> Wazemmes<B> {
                         [xkb::KEY_eacute] => FilterResult::Intercept(KeyAction::MoveToWorkspace(1)),
                         _ => FilterResult::Forward,
                     }
-                } else if modifiers.ctrl {
+                } else if modifiers.ctrl && state == KeyState::Pressed {
                     match keysyms {
                         [xkb::KEY_h] => {
                             FilterResult::Intercept(KeyAction::MoveFocus(Direction::Left))

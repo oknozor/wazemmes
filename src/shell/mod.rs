@@ -6,6 +6,7 @@ use smithay::reexports::wayland_server::DisplayHandle;
 use std::cell::RefCell;
 
 pub mod container;
+pub mod node;
 pub mod tree;
 pub mod window;
 pub mod workspace;

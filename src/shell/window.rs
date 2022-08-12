@@ -1,3 +1,4 @@
+use crate::shell::node;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Size};
@@ -59,21 +60,8 @@ impl WindowWarp {
         let window = Window::new(Kind::Xdg(toplevel));
         window
             .user_data()
-            .insert_if_missing(|| WindowId(id::next()));
+            .insert_if_missing(|| WindowId(node::id::next()));
 
         WindowWarp { inner: window }
-    }
-}
-
-pub mod id {
-    use once_cell::sync::Lazy;
-    use std::sync::{Arc, Mutex};
-
-    static WINDOW_ID_COUNTER: Lazy<Arc<Mutex<u32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
-
-    pub fn next() -> u32 {
-        let mut id = WINDOW_ID_COUNTER.lock().unwrap();
-        *id += 1;
-        *id
     }
 }
