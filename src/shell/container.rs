@@ -1,8 +1,8 @@
 use crate::shell::window::WindowWarp;
 
+use crate::config::CONFIG;
 use crate::shell::node;
 use crate::shell::node::Node;
-use slog_scope::debug;
 use smithay::desktop::Space;
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
@@ -171,11 +171,21 @@ impl Container {
     // Call this on the root of the tree to refresh a workspace
     pub fn redraw(&mut self, space: &mut Space) {
         let len = self.childs.len();
-        let len = if len == 0 { 1 } else { len };
+        let non_zero_length = if len == 0 { 1 } else { len };
+        let gaps = CONFIG.gaps as i32;
+        let total_gaps = (len - 1) as i32 * gaps;
 
         let (width, height) = match self.layout {
-            ContainerLayout::Vertical => (self.width, self.height / len as i32),
-            ContainerLayout::Horizontal => (self.width / len as i32, self.height),
+            ContainerLayout::Vertical => {
+                let w = self.width;
+                let h = (self.height - total_gaps) / non_zero_length as i32;
+                (w, h)
+            }
+            ContainerLayout::Horizontal => {
+                let w = (self.width - total_gaps) / non_zero_length as i32;
+                let h = self.height;
+                (w, h)
+            }
         };
 
         let (mut x, mut y) = (self.x, self.y);
@@ -185,8 +195,8 @@ impl Container {
         for (idx, (id, node)) in self.childs.iter().enumerate() {
             if idx > 0 {
                 match self.layout {
-                    ContainerLayout::Vertical => y += height,
-                    ContainerLayout::Horizontal => x += width,
+                    ContainerLayout::Vertical => y += height + gaps,
+                    ContainerLayout::Horizontal => x += width + gaps,
                 }
             };
 
@@ -201,10 +211,6 @@ impl Container {
                 }
                 Node::Window(window) => {
                     let activate = Some(*id) == self.focus;
-                    debug!(
-                        "Placing window (x={}, y={}, w={}, h={})",
-                        x, y, width, height
-                    );
                     window.configure(space, (width, height), activate);
                     space.map_window(window.get(), (x, y), None, activate);
                 }
@@ -248,6 +254,14 @@ impl Container {
             Node::Container(_) => None,
             Node::Window(w) => Some(w),
         })
+    }
+
+    pub fn window_count(&self) -> i32 {
+        self.iter_windows().count() as i32
+    }
+
+    pub fn container_count(&self) -> i32 {
+        self.iter_containers().count() as i32
     }
 
     pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {

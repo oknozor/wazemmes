@@ -4,6 +4,7 @@ use crate::shell::window::WindowWarp;
 use smithay::utils::{Logical, Rectangle};
 use smithay::wayland::output::Output;
 
+use crate::config::CONFIG;
 use crate::shell::node::Node;
 use std::collections::HashMap;
 
@@ -15,12 +16,13 @@ pub struct Tree {
 
 impl Tree {
     pub fn new(output: &Output, geometry: Rectangle<i32, Logical>) -> Tree {
+        let gaps = CONFIG.gaps as i32;
         let root = Container {
             id: node::id::get(),
-            x: geometry.loc.x,
-            y: geometry.loc.y,
-            width: geometry.size.w,
-            height: geometry.size.h,
+            x: geometry.loc.x + gaps,
+            y: geometry.loc.y + gaps,
+            width: geometry.size.w - (2 * gaps),
+            height: geometry.size.h - (2 * gaps),
             output: output.clone(),
             parent: None,
             childs: HashMap::new(),

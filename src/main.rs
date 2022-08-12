@@ -14,6 +14,7 @@ mod inputs;
 mod shell;
 mod state;
 // mod udev;
+mod config;
 mod drawing;
 mod render;
 mod winit;
