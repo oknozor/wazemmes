@@ -9,7 +9,7 @@ use crate::config::CONFIG;
 use crate::shell::node;
 use crate::shell::node::Node;
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::WindowWarp;
+use crate::shell::window::{WindowWarp};
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {
@@ -127,7 +127,7 @@ impl Container {
 
     // Push a window to the tree and update the focus
     pub fn push_window(&mut self, surface: ToplevelSurface) {
-        let window = WindowWarp::new(surface);
+        let window = WindowWarp::from(surface);
         let id = window.id();
         self.nodes.insert(id, Node::Window(window));
     }
@@ -241,6 +241,7 @@ impl Container {
                     };
 
                     let activate = Some(*id) == self.get_focused_window().map(|(id, _w)| id);
+                    window.get_state().set_location((x, y));
                     window.configure(space, (width, height), activate);
                     space.map_window(window.get(), (x, y), None, activate);
                 }

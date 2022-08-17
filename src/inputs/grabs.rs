@@ -1,3 +1,4 @@
+use crate::shell::window::{WindowWarp, FLOATING_Z_INDEX};
 use crate::Wazemmes;
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;
@@ -25,9 +26,15 @@ impl<Backend> PointerGrab<Wazemmes<Backend>> for MoveSurfaceGrab {
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
+        let location = new_location.to_i32_round();
+
+        // Save the current window location
+        WindowWarp::from(self.window.clone())
+            .get_state()
+            .set_location(location);
 
         data.space
-            .map_window(&self.window, new_location.to_i32_round(), None, true);
+            .map_window(&self.window, location, FLOATING_Z_INDEX, true);
     }
 
     fn button(

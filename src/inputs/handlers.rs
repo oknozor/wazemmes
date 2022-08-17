@@ -6,13 +6,14 @@ use smithay::backend::input::{
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::protocol::wl_pointer;
 use smithay::reexports::wayland_server::{Display, DisplayHandle};
+use smithay::reexports::x11rb::protocol::xproto::ConnectionExt;
 use smithay::utils::{Logical, Point};
-use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus, MotionEvent, PointerGrabStartData};
+use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus, MotionEvent};
 use smithay::wayland::{Serial, SERIAL_COUNTER};
 
 use crate::inputs::grabs::MoveSurfaceGrab;
 use crate::shell::node::Node;
-use crate::shell::window::WindowState;
+use crate::shell::window::{WindowState, WindowWarp, FLOATING_Z_INDEX};
 use crate::state::Wazemmes;
 use crate::Backend;
 
@@ -205,24 +206,14 @@ impl<B: Backend> Wazemmes<B> {
 
         if wl_pointer::ButtonState::Pressed == button_state {
             if let Some(window) = self.space.window_under(pointer.current_location()).cloned() {
-                let id = window.user_data().get::<WindowState>().unwrap().id();
-                let ws = self.get_current_workspace();
-                let mut ws = ws.get_mut();
-                let container = ws.root().container_having_window(id).unwrap();
-                self.set_window_focus(dh, serial, &window);
-                let focused_id = container.get().id;
-                ws.set_container_focused(focused_id);
+                let window = WindowWarp::from(window);
 
-                let floating = window
-                    .user_data()
-                    .get::<WindowState>()
-                    .unwrap()
-                    .is_floating();
-
-                if self.mod_pressed && floating {
+                if self.mod_pressed && window.is_floating() {
                     let pos = pointer.current_location();
                     let initial_window_location = (pos.x as i32, pos.y as i32).into();
                     let start_data = pointer.grab_start_data().unwrap();
+
+                    let window = window.get().clone();
 
                     let grab = MoveSurfaceGrab {
                         start_data,
@@ -231,6 +222,14 @@ impl<B: Backend> Wazemmes<B> {
                     };
 
                     pointer.set_grab(grab, serial, Focus::Clear);
+                } else {
+                    let id = window.id();
+                    let ws = self.get_current_workspace();
+                    let mut ws = ws.get_mut();
+                    let container = ws.root().container_having_window(id).unwrap();
+                    self.set_window_focus(dh, serial, window.get());
+                    let focused_id = container.get().id;
+                    ws.set_container_focused(focused_id);
                 }
             } else {
                 self.space.windows().for_each(|window| {
@@ -252,11 +251,12 @@ impl<B: Backend> Wazemmes<B> {
             window.configure();
         });
 
-        self.space.raise_window(window, true);
-
+        let window = WindowWarp::from(window.clone());
+        self.space
+            .map_window(window.get(), window.location(), window.z_index(), true);
         keyboard.set_focus(dh, Some(window.toplevel().wl_surface()), serial);
-        window.set_activated(true);
-        window.configure();
+        window.get().set_activated(true);
+        window.get().configure();
     }
 
     pub fn handle_pointer_motion<I: InputBackend>(
@@ -314,8 +314,14 @@ impl<B: Backend> Wazemmes<B> {
         let mut container = container.get_mut();
 
         if let Some((_id, window)) = container.get_focused_window_mut() {
+            let output = self.space.outputs().next().unwrap();
+            let geometry = self.space.output_geometry(output).unwrap();
+            let y = geometry.size.h / 2 + geometry.loc.y;
+            let x = geometry.size.w / 2 + geometry.loc.x;
+
             window.toggle_floating();
-            self.space.map_window(window.get(), (0, 0), 255, true);
+            self.space
+                .map_window(window.get(), (x, y), FLOATING_Z_INDEX, true);
             window.get().configure();
             container.redraw(&mut self.space);
         }
