@@ -10,11 +10,13 @@ use smithay::desktop::space::RenderError;
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::wayland_server::protocol::{wl_output, wl_surface};
 use smithay::reexports::wayland_server::Display;
-use smithay::utils::IsAlive;
+use smithay::utils::{IsAlive};
 use smithay::wayland::output::{Mode, Output, PhysicalProperties};
 use smithay::wayland::seat::CursorImageStatus;
 
 use crate::drawing::{draw_cursor, draw_dnd_icon, CustomElem};
+
+use crate::border::QuadElement;
 
 use crate::shell::workspace::WorkspaceRef;
 use crate::{Backend, CallLoopData, Wazemmes};
@@ -25,6 +27,19 @@ pub struct WinitData {
 }
 
 impl Backend for WinitData {
+    fn full_redraw(&mut self) -> u8 {
+        self.full_redraw = self.full_redraw.saturating_sub(1);
+        self.full_redraw
+    }
+
+    fn buffer_age(&self) -> Option<usize> {
+        self.backend.buffer_age()
+    }
+
+    fn renderer(&mut self) -> &mut Gles2Renderer {
+        self.backend.renderer()
+    }
+
     fn seat_name(&self) -> String {
         String::from("winit")
     }
@@ -116,10 +131,17 @@ pub fn init_winit(log: Logger) {
 
         // drawing logic
         {
+            let age = state.get_buffer_age();
+            let focus = {
+                let ws = state.get_current_workspace();
+                let ws = ws.get();
+                ws.get_focus()
+            };
+
             let backend = &mut state.backend_data.backend;
             let cursor_visible: bool;
 
-            let mut elements = Vec::<CustomElem<Gles2Renderer>>::new();
+            let mut elements = Vec::<CustomElem>::new();
             let mut cursor_guard = state.cursor_status.lock().unwrap();
 
             // draw the dnd icon if any
@@ -132,6 +154,45 @@ pub fn init_winit(log: Logger) {
                 }
             }
 
+            if let Some(window) = focus.1 {
+                let container = focus.0.get();
+                let output = state.space.outputs().next().unwrap();
+                let output_geometry = state.space.output_geometry(output).unwrap();
+                let scale = output.current_scale().fractional_scale();
+
+                let output_geometry = output_geometry
+                    .to_f64()
+                    .to_physical(scale);
+
+                let borders = window.get_borders(output);
+
+                backend
+                    .renderer()
+                    .with_context(|_renderer, gles| {
+                        elements.push(CustomElem::from(QuadElement::new(
+                            gles,
+                            output_geometry,
+                            borders.left
+                        )));
+                        elements.push(CustomElem::from(QuadElement::new(
+                            gles,
+                            output_geometry,
+                            borders.top
+                        )));
+                        elements.push(CustomElem::from(QuadElement::new(
+                            gles,
+                            output_geometry,
+                            borders.right
+                        )));
+                        elements.push(CustomElem::from(QuadElement::new(
+                            gles,
+                            output_geometry,
+                            borders.bottom
+                        )));
+                    })
+                    .unwrap();
+            }
+
             // draw the cursor as relevant
             // reset the cursor if the surface is no longer alive
             let mut reset = false;
@@ -141,6 +202,7 @@ pub fn init_winit(log: Logger) {
             if reset {
                 *cursor_guard = CursorImageStatus::Default;
             }
+
             if let CursorImageStatus::Image(ref surface) = *cursor_guard {
                 cursor_visible = false;
                 elements.push(
@@ -152,24 +214,15 @@ pub fn init_winit(log: Logger) {
             }
 
             // draw FPS
-            let full_redraw = &mut state.backend_data.full_redraw;
-            *full_redraw = full_redraw.saturating_sub(1);
             let space = &mut state.space;
             let render_res = backend.bind().and_then(|_| {
                 let renderer = backend.renderer();
-                crate::render::render_output(&output, space, renderer, 0, &elements, &log).map_err(
-                    |err| match err {
+                crate::render::render_output(&output, space, renderer, age, &elements, &log)
+                    .map_err(|err| match err {
                         RenderError::Rendering(err) => err.into(),
                         _ => unreachable!(),
-                    },
-                )
+                    })
             });
-
-            let age = if *full_redraw > 0 {
-                0
-            } else {
-                backend.buffer_age().unwrap_or(0)
-            };
 
             match render_res {
                 Ok(Some(damage)) => {

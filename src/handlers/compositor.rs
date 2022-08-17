@@ -1,4 +1,4 @@
-use crate::Wazemmes;
+use crate::{Backend, Wazemmes};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -10,7 +10,7 @@ use smithay::{delegate_compositor, delegate_shm};
 
 use super::xdg_shell;
 
-impl<Backend> CompositorHandler for Wazemmes<Backend> {
+impl<BackendData: Backend> CompositorHandler for Wazemmes<BackendData> {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
     }
@@ -23,15 +23,15 @@ impl<Backend> CompositorHandler for Wazemmes<Backend> {
     }
 }
 
-impl<Backend> BufferHandler for Wazemmes<Backend> {
+impl<BackendData: Backend> BufferHandler for Wazemmes<BackendData> {
     fn buffer_destroyed(&mut self, _buffer: &wl_buffer::WlBuffer) {}
 }
 
-impl<Backend> ShmHandler for Wazemmes<Backend> {
+impl<BackendData: Backend> ShmHandler for Wazemmes<BackendData> {
     fn shm_state(&self) -> &ShmState {
         &self.shm_state
     }
 }
 
-delegate_compositor!(@<BackendData: 'static> Wazemmes<BackendData>);
-delegate_shm!(@<BackendData: 'static> Wazemmes<BackendData>);
+delegate_compositor!(@<BackendData: 'static + Backend> Wazemmes<BackendData>);
+delegate_shm!(@<BackendData: 'static + Backend> Wazemmes<BackendData>);

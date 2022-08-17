@@ -2,8 +2,9 @@ use crate::config::CONFIG;
 use crate::shell::container::{Container, ContainerLayout, ContainerRef};
 use crate::shell::node;
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::WindowWarp;
+use crate::shell::window::WindowWrap;
 use slog_scope::warn;
+use smithay::backend::renderer::gles2::Gles2Renderer;
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Rectangle};
@@ -45,7 +46,7 @@ impl WorkspaceRef {
 pub struct Workspace {
     pub output: Output,
     root: ContainerRef,
-    focused: ContainerRef,
+    focus: ContainerRef,
 }
 
 impl Workspace {
@@ -64,12 +65,12 @@ impl Workspace {
         };
 
         let root = ContainerRef::new(root);
-        let focused = root.clone();
+        let focus = root.clone();
 
         Self {
             output: output.clone(),
             root,
-            focused,
+            focus,
         }
     }
 
@@ -77,34 +78,33 @@ impl Workspace {
         self.root.clone()
     }
 
-    pub fn get_container_focused(&self) -> ContainerRef {
-        self.focused.clone()
-    }
+    pub fn get_focus(&self) -> (ContainerRef, Option<WindowWrap>) {
+        let window = {
+            let c = self.focus.get();
+            c.get_focused_window()
+        };
 
-    pub fn get_focused_window(&self) -> Option<(u32, WindowWarp)> {
-        let container = self.focused.get();
-        container
-            .get_focused_window()
-            .map(|(id, w)| (id, w.clone()))
+        (self.focus.clone(), window)
     }
 
     pub fn create_container(&mut self, layout: ContainerLayout) -> ContainerRef {
         let child = {
-            let focused = self.get_container_focused();
-            let mut current = focused.get_mut();
-            current.create_child(layout, focused.clone())
+            let focused = self.get_focus();
+            let current = focused.0.clone();
+            let mut current = current.get_mut();
+            current.create_child(layout, focused.0)
         };
 
-        self.focused = child.clone();
+        self.focus = child.clone();
         child
     }
 
     pub fn pop_container(&mut self) {
-        let current = self.get_container_focused();
-        let current = current.get();
+        let current = self.get_focus();
+        let current = current.0.get();
         let id = current.id;
         if let Some(parent) = &current.parent {
-            self.focused = parent.clone();
+            self.focus = parent.clone();
             let mut parent = parent.get_mut();
             parent.nodes.remove(&id);
         }
@@ -112,15 +112,15 @@ impl Workspace {
 
     pub fn set_container_focused(&mut self, id: u32) {
         if let Some(container) = self.find_container_by_id(&id) {
-            self.focused = container
+            self.focus = container;
         } else {
             warn!("Tried to set container focus but container with id [{id}] was not found")
         }
     }
 
-    pub fn flatten_window(&self) -> Vec<WindowWarp> {
+    pub fn flatten_window(&self) -> Vec<WindowWrap> {
         let root = self.root.get();
-        let mut windows: Vec<WindowWarp> = root.nodes.iter_windows().cloned().collect();
+        let mut windows: Vec<WindowWrap> = root.nodes.iter_windows().cloned().collect();
 
         for child in root.nodes.iter_containers() {
             let window = child.get().flatten_window();
@@ -136,7 +136,13 @@ impl Workspace {
         }
     }
 
-    pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
+    pub fn map_all(
+        &self,
+        space: &mut Space,
+        dh: &DisplayHandle,
+        _renderer: &mut Gles2Renderer,
+        _age: usize,
+    ) {
         let root = self.root();
         let mut root = root.get_mut();
         root.redraw(space);

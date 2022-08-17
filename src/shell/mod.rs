@@ -4,7 +4,7 @@ use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;
 
 use crate::shell::workspace::WorkspaceRef;
-use crate::Wazemmes;
+use crate::{Backend, Wazemmes};
 
 pub mod container;
 pub mod node;
@@ -28,7 +28,7 @@ impl FullscreenSurface {
     }
 }
 
-impl<Backend> Wazemmes<Backend> {
+impl<BackendData: Backend> Wazemmes<BackendData> {
     pub fn get_current_workspace(&self) -> WorkspaceRef {
         let current = &self.current_workspace;
         self.workspaces
@@ -48,13 +48,17 @@ impl<Backend> Wazemmes<Backend> {
         current_workspace.unmap_all(&mut self.space);
         self.current_workspace = num;
 
+        let age = self.get_buffer_age();
+        let renderer = self.backend_data.renderer();
         match self.workspaces.get(&num) {
             None => {
                 let output = self.space.outputs().next().unwrap();
                 let workspace = WorkspaceRef::new(output.clone(), &self.space);
                 self.workspaces.insert(num, workspace);
             }
-            Some(workspace) => workspace.get_mut().map_all(&mut self.space, dh),
+            Some(workspace) => workspace
+                .get_mut()
+                .map_all(&mut self.space, dh, renderer, age),
         };
 
         self.space.refresh(dh);

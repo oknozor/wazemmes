@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::shell::container::ContainerRef;
 use crate::shell::node::Node;
-use crate::shell::window::WindowWarp;
+use crate::shell::window::WindowWrap;
 
 #[derive(Debug, Default)]
 pub struct NodeMap {
@@ -23,7 +23,7 @@ impl NodeMap {
         })
     }
 
-    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWarp> {
+    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWrap> {
         self.items.values().filter_map(|node| match node {
             Node::Container(_) => None,
             Node::Window(w) => Some(w),

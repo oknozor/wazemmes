@@ -5,6 +5,7 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+
 use smithay::wayland::compositor::with_states;
 use smithay::wayland::seat::{PointerGrabStartData, Seat};
 use smithay::wayland::shell::xdg::{
@@ -14,10 +15,10 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::Serial;
 use std::sync::Mutex;
 
-use crate::Wazemmes;
+use crate::{Backend, Wazemmes};
 use smithay::wayland::SERIAL_COUNTER;
 
-impl<Backend> XdgShellHandler for Wazemmes<Backend> {
+impl<BackendData: Backend> XdgShellHandler for Wazemmes<BackendData> {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -25,30 +26,34 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
     fn new_toplevel(&mut self, dh: &DisplayHandle, surface: ToplevelSurface) {
         let workspace = self.get_current_workspace();
         let mut workspace = workspace.get_mut();
-
-        let container = if let Some(layout) = self.next_layout {
-            self.next_layout = None;
-            workspace.create_container(layout)
-        } else {
-            workspace.get_container_focused()
-        };
+        let space = &mut self.space;
 
         {
-            let mut container = container.get_mut();
-            container.push_window(surface.clone());
+            let container = if let Some(layout) = self.next_layout {
+                self.next_layout = None;
+                workspace.create_container(layout)
+            } else {
+                workspace.get_focus().0
+            };
+
+            {
+                let mut container = container.get_mut();
+                container.push_window(surface.clone());
+            }
+
+            // Grab keyboard focus
+            let handle = self
+                .seat
+                .get_keyboard()
+                .expect("Should have a keyboard seat");
+
+            let serial = SERIAL_COUNTER.next_serial();
+            handle.set_focus(dh, Some(surface.wl_surface()), serial);
+            let root = workspace.root();
+            let mut root = root.get_mut();
+
+            root.redraw(space);
         }
-
-        // Grab keyboard focus
-        let handle = self
-            .seat
-            .get_keyboard()
-            .expect("Should have a keyboard seat");
-
-        let serial = SERIAL_COUNTER.next_serial();
-        handle.set_focus(dh, Some(surface.wl_surface()), serial);
-        let root = workspace.root();
-        let mut root = root.get_mut();
-        root.redraw(&mut self.space);
     }
 
     fn new_popup(
@@ -76,7 +81,7 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
         serial: Serial,
         _edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat: Seat<Wazemmes<Backend>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<Wazemmes<BackendData>> = Seat::from_resource(&seat).unwrap();
 
         let wl_surface = surface.wl_surface();
 
@@ -101,10 +106,10 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
 }
 
 // Xdg Shell
-delegate_xdg_shell!(@<BackendData: 'static> Wazemmes<BackendData>);
+delegate_xdg_shell!(@<BackendData: 'static + Backend> Wazemmes<BackendData>);
 
-fn check_grab<Backend>(
-    seat: &Seat<Wazemmes<Backend>>,
+fn check_grab<BackendData: Backend>(
+    seat: &Seat<Wazemmes<BackendData>>,
     surface: &WlSurface,
     serial: Serial,
 ) -> Option<PointerGrabStartData> {

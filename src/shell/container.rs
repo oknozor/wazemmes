@@ -2,14 +2,16 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 
 use smithay::desktop::Space;
+
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::config::CONFIG;
 use crate::shell::node;
 use crate::shell::node::Node;
+
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::WindowWarp;
+use crate::shell::window::WindowWrap;
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {
@@ -106,16 +108,16 @@ impl Container {
         self.nodes.has_container()
     }
 
-    pub fn get_focused_window(&self) -> Option<(u32, &'_ WindowWarp)> {
+    pub fn get_focused_window(&self) -> Option<WindowWrap> {
         if let Some(focus) = self.nodes.get_focused() {
             let window = self.nodes.get(focus);
-            window.map(|window| (*focus, window.try_into().unwrap()))
+            window.map(|window| window.try_into().unwrap())
         } else {
             None
         }
     }
 
-    pub fn get_focused_window_mut(&mut self) -> Option<(u32, &'_ mut WindowWarp)> {
+    pub fn get_focused_window_mut(&mut self) -> Option<(u32, &'_ mut WindowWrap)> {
         let focused = self.nodes.get_focused().cloned();
         if let Some(focus) = focused {
             let window = self.nodes.get_mut(&focus);
@@ -126,10 +128,11 @@ impl Container {
     }
 
     // Push a window to the tree and update the focus
-    pub fn push_window(&mut self, surface: ToplevelSurface) {
-        let window = WindowWarp::from(surface);
+    pub fn push_window(&mut self, surface: ToplevelSurface) -> u32 {
+        let window = WindowWrap::from(surface);
         let id = window.id();
         self.nodes.insert(id, Node::Window(window));
+        id
     }
 
     pub fn create_child(&mut self, layout: ContainerLayout, parent: ContainerRef) -> ContainerRef {
@@ -159,7 +162,7 @@ impl Container {
                 layout,
             };
 
-            let id = self.get_focused_window().map(|(id, _)| id);
+            let id = self.get_focused_window().map(|window| window.id());
 
             if let Some(id) = id {
                 let window = self.nodes.remove(&id);
@@ -176,9 +179,9 @@ impl Container {
     }
 
     pub fn close_window(&mut self) {
-        let idx = self.get_focused_window().map(|(idx, window)| {
+        let idx = self.get_focused_window().map(|window| {
             window.send_close();
-            idx
+            window.id()
         });
 
         if let Some(id) = idx {
@@ -240,8 +243,10 @@ impl Container {
                         }
                     };
 
-                    let activate = Some(*id) == self.get_focused_window().map(|(id, _w)| id);
-                    window.get_state().set_location((x, y));
+                    let activate = Some(*id) == self.get_focused_window().map(|window| window.id());
+                    let state = window.get_state();
+                    state.set_location((x, y));
+                    state.set_size((width, height));
                     window.configure(space, (width, height), activate);
                     space.map_window(window.get(), (x, y), None, activate);
                 }
@@ -264,8 +269,8 @@ impl Container {
         self.nodes.extend(orphans);
     }
 
-    pub fn flatten_window(&self) -> Vec<WindowWarp> {
-        let mut windows: Vec<WindowWarp> = self.nodes.iter_windows().cloned().collect();
+    pub fn flatten_window(&self) -> Vec<WindowWrap> {
+        let mut windows: Vec<WindowWrap> = self.nodes.iter_windows().cloned().collect();
 
         for child in self.nodes.iter_containers() {
             let child = child.get();
@@ -275,7 +280,7 @@ impl Container {
         windows
     }
 
-    pub fn set_focus(&mut self, window_id: u32) {
+    pub(crate) fn set_focus(&mut self, window_id: u32) {
         if self.nodes.get(&window_id).is_some() {
             self.nodes.set_focus(window_id)
         }

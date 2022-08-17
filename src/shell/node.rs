@@ -1,10 +1,10 @@
 use crate::shell::container::ContainerRef;
-use crate::shell::window::WindowWarp;
+use crate::shell::window::WindowWrap;
 
 #[derive(Debug, Clone)]
 pub enum Node {
     Container(ContainerRef),
-    Window(WindowWarp),
+    Window(WindowWrap),
 }
 
 impl Node {
@@ -13,11 +13,11 @@ impl Node {
     }
 }
 
-impl TryInto<WindowWarp> for Node {
+impl TryInto<WindowWrap> for Node {
     // TODO: this error
     type Error = &'static str;
 
-    fn try_into(self) -> Result<WindowWarp, Self::Error> {
+    fn try_into(self) -> Result<WindowWrap, Self::Error> {
         match self {
             Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w),
@@ -25,11 +25,11 @@ impl TryInto<WindowWarp> for Node {
     }
 }
 
-impl<'a> TryInto<&'a mut WindowWarp> for &'a mut Node {
+impl<'a> TryInto<&'a mut WindowWrap> for &'a mut Node {
     // TODO: this error
     type Error = &'static str;
 
-    fn try_into(self) -> Result<&'a mut WindowWarp, Self::Error> {
+    fn try_into(self) -> Result<&'a mut WindowWrap, Self::Error> {
         match self {
             Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w),
@@ -37,11 +37,11 @@ impl<'a> TryInto<&'a mut WindowWarp> for &'a mut Node {
     }
 }
 
-impl TryInto<WindowWarp> for &Node {
+impl TryInto<WindowWrap> for &Node {
     // TODO: this error
     type Error = &'static str;
 
-    fn try_into(self) -> Result<WindowWarp, Self::Error> {
+    fn try_into(self) -> Result<WindowWrap, Self::Error> {
         match self {
             Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w.clone()),
@@ -73,11 +73,11 @@ impl TryInto<ContainerRef> for &Node {
     }
 }
 
-impl<'a> TryInto<&'a WindowWarp> for &'a Node {
+impl<'a> TryInto<&'a WindowWrap> for &'a Node {
     // TODO: this error
     type Error = &'static str;
 
-    fn try_into(self) -> Result<&'a WindowWarp, Self::Error> {
+    fn try_into(self) -> Result<&'a WindowWrap, Self::Error> {
         match self {
             Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w),

@@ -1,7 +1,13 @@
+use crate::inputs::grabs::MoveSurfaceGrab;
 use crate::shell::container::{ContainerLayout, ContainerState};
+use crate::shell::node::Node;
+use crate::shell::window::{WindowState, WindowWrap, FLOATING_Z_INDEX};
+use crate::state::Wazemmes;
+use crate::Backend;
 use slog_scope::debug;
 use smithay::backend::input::{
-    Axis, Event, InputBackend, PointerAxisEvent, PointerButtonEvent, PointerMotionAbsoluteEvent,
+    Axis, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
+    PointerMotionAbsoluteEvent,
 };
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::protocol::wl_pointer;
@@ -10,12 +16,6 @@ use smithay::utils::{Logical, Point};
 use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus, MotionEvent};
 use smithay::wayland::{Serial, SERIAL_COUNTER};
 
-use crate::inputs::grabs::MoveSurfaceGrab;
-use crate::shell::node::Node;
-use crate::shell::window::{WindowState, WindowWarp, FLOATING_Z_INDEX};
-use crate::state::Wazemmes;
-use crate::Backend;
-
 impl<B: Backend> Wazemmes<B> {
     pub fn run(cmd: String) {
         std::process::Command::new(cmd).spawn().ok();
@@ -23,10 +23,8 @@ impl<B: Backend> Wazemmes<B> {
 
     pub fn close(&mut self, display: &&mut Display<Wazemmes<B>>) {
         let state = {
-            let container = self
-                .get_current_workspace()
-                .get_mut()
-                .get_container_focused();
+            let container = self.get_current_workspace().get_mut().get_focus().0;
+
             let mut container = container.get_mut();
             debug!("Closing window in container: {}", container.id);
             container.close_window();
@@ -39,8 +37,8 @@ impl<B: Backend> Wazemmes<B> {
                 let ws = self.get_current_workspace();
                 let mut ws = ws.get_mut();
                 ws.pop_container();
-                if let Some((_id, window)) = ws.get_focused_window() {
-                    self.set_window_focus(
+                if let Some(window) = ws.get_focus().1 {
+                    self.toggle_window_focus(
                         &mut display.handle(),
                         SERIAL_COUNTER.next_serial(),
                         window.get(),
@@ -52,7 +50,7 @@ impl<B: Backend> Wazemmes<B> {
                 let container = {
                     let ws = self.get_current_workspace();
                     let ws = &ws.get_mut();
-                    ws.get_container_focused()
+                    ws.get_focus().0
                 };
 
                 let children: Option<Vec<(u32, Node)>> = {
@@ -75,8 +73,8 @@ impl<B: Backend> Wazemmes<B> {
                 let ws = self.get_current_workspace();
                 let ws = ws.get();
 
-                if let Some((_id, window)) = ws.get_focused_window() {
-                    self.set_window_focus(
+                if let Some(window) = ws.get_focus().1 {
+                    self.toggle_window_focus(
                         &mut display.handle(),
                         SERIAL_COUNTER.next_serial(),
                         window.get(),
@@ -87,8 +85,8 @@ impl<B: Backend> Wazemmes<B> {
                 let ws = self.get_current_workspace();
                 let ws = ws.get();
 
-                if let Some((_id, window)) = ws.get_focused_window() {
-                    self.set_window_focus(
+                if let Some(window) = ws.get_focus().1 {
+                    self.toggle_window_focus(
                         &mut display.handle(),
                         SERIAL_COUNTER.next_serial(),
                         window.get(),
@@ -103,7 +101,7 @@ impl<B: Backend> Wazemmes<B> {
         let workspace = workspace.get();
 
         {
-            if let Some((_, window)) = workspace.get_focused_window() {
+            if let Some(window) = workspace.get_focus().1 {
                 let handle = self
                     .seat
                     .get_keyboard()
@@ -126,7 +124,11 @@ impl<B: Backend> Wazemmes<B> {
             root.height = geo.size.h;
             root.width = geo.size.w;
         }
-        root.redraw(&mut self.space);
+
+        let _age = self.get_buffer_age();
+        let _renderer = self.backend_data.renderer();
+        let space = &mut self.space;
+        root.redraw(space);
     }
 
     pub fn handle_pointer_axis<I: InputBackend>(
@@ -191,46 +193,49 @@ impl<B: Backend> Wazemmes<B> {
             },
         );
 
-        if wl_pointer::ButtonState::Pressed == button_state {
-            if let Some(window) = self.space.window_under(pointer.current_location()).cloned() {
-                let window = WindowWarp::from(window);
+        if let Some(MouseButton::Left) = event.button() {
+            if wl_pointer::ButtonState::Pressed == button_state {
+                if let Some(window) = self.space.window_under(pointer.current_location()).cloned() {
+                    let window = WindowWrap::from(window);
 
-                if self.mod_pressed && window.is_floating() {
-                    let pos = pointer.current_location();
-                    let initial_window_location = (pos.x as i32, pos.y as i32).into();
-                    let start_data = pointer.grab_start_data().unwrap();
+                    if self.mod_pressed && window.is_floating() {
+                        let pos = pointer.current_location();
+                        let initial_window_location = (pos.x as i32, pos.y as i32).into();
+                        let start_data = pointer.grab_start_data().unwrap();
 
-                    let window = window.get().clone();
+                        let window = window.get().clone();
 
-                    let grab = MoveSurfaceGrab {
-                        start_data,
-                        window,
-                        initial_window_location,
-                    };
+                        let grab = MoveSurfaceGrab {
+                            start_data,
+                            window,
+                            initial_window_location,
+                        };
 
-                    pointer.set_grab(grab, serial, Focus::Clear);
+                        pointer.set_grab(grab, serial, Focus::Clear);
+                    } else {
+                        let id = window.id();
+                        let ws = self.get_current_workspace();
+                        let mut ws = ws.get_mut();
+                        let container = ws.root().container_having_window(id).unwrap();
+                        container.get_mut().set_focus(id);
+                        self.toggle_window_focus(dh, serial, window.get());
+                        let focused_id = container.get().id;
+                        ws.set_container_focused(focused_id);
+                    }
                 } else {
-                    let id = window.id();
-                    let ws = self.get_current_workspace();
-                    let mut ws = ws.get_mut();
-                    let container = ws.root().container_having_window(id).unwrap();
-                    self.set_window_focus(dh, serial, window.get());
-                    let focused_id = container.get().id;
-                    ws.set_container_focused(focused_id);
-                }
-            } else {
-                self.space.windows().for_each(|window| {
-                    window.set_activated(false);
-                    window.configure();
-                });
+                    self.space.windows().for_each(|window| {
+                        window.set_activated(false);
+                        window.configure();
+                    });
 
-                let keyboard = self.seat.get_keyboard().unwrap();
-                keyboard.set_focus(dh, None, serial);
+                    let keyboard = self.seat.get_keyboard().unwrap();
+                    keyboard.set_focus(dh, None, serial);
+                }
             }
-        };
+        }
     }
 
-    fn set_window_focus(&mut self, dh: &mut DisplayHandle, serial: Serial, window: &Window) {
+    fn toggle_window_focus(&mut self, dh: &mut DisplayHandle, serial: Serial, window: &Window) {
         let keyboard = self.seat.get_keyboard().unwrap();
 
         self.space.windows().for_each(|window| {
@@ -238,7 +243,7 @@ impl<B: Backend> Wazemmes<B> {
             window.configure();
         });
 
-        let window = WindowWarp::from(window.clone());
+        let window = WindowWrap::from(window.clone());
         self.space
             .map_window(window.get(), window.location(), window.z_index(), true);
         keyboard.set_focus(dh, Some(window.toplevel().wl_surface()), serial);
@@ -288,19 +293,21 @@ impl<B: Backend> Wazemmes<B> {
             let ws = self.get_current_workspace();
             let mut ws = ws.get_mut();
             let container = ws.root().container_having_window(id).unwrap();
+            container
+                .get_mut()
+                .set_focus(WindowWrap::from(window.clone()).id());
             let focused_id = container.get().id;
             ws.set_container_focused(focused_id);
-            self.set_window_focus(&mut display.handle(), serial, &window);
+            self.toggle_window_focus(&mut display.handle(), serial, &window);
         }
     }
 
     pub fn toggle_floating(&mut self) {
         let ws = self.get_current_workspace();
         let ws = ws.get();
-        let container = ws.get_container_focused();
-        let mut container = container.get_mut();
+        let focus = ws.get_focus();
 
-        if let Some((_id, window)) = container.get_focused_window_mut() {
+        if let Some(window) = focus.1 {
             let output = self.space.outputs().next().unwrap();
             let geometry = self.space.output_geometry(output).unwrap();
             let y = geometry.size.h / 2 + geometry.loc.y;
@@ -310,18 +317,18 @@ impl<B: Backend> Wazemmes<B> {
             self.space
                 .map_window(window.get(), (x, y), FLOATING_Z_INDEX, true);
             window.get().configure();
-            container.redraw(&mut self.space);
+            let space = &mut self.space;
+            focus.0.get_mut().redraw(space);
         }
     }
 
     fn scan_window(&mut self, direction: Direction) -> Option<Window> {
         let ws = self.get_current_workspace();
         let ws = ws.get();
-        let container = ws.get_container_focused();
-        let container = container.get();
+        let focus = ws.get_focus();
         let mut window = None;
 
-        if let Some((_idx, window_ref)) = container.get_focused_window() {
+        if let Some(window_ref) = focus.1 {
             let loc = self
                 .space
                 .window_location(window_ref.get())

@@ -19,13 +19,14 @@ use smithay::wayland::shm::ShmState;
 use smithay::wayland::socket::ListeningSocketSource;
 use smithay::wayland::tablet_manager::TabletSeatTrait;
 
+use smithay::backend::renderer::gles2::Gles2Renderer;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
-pub struct Wazemmes<BackendData: 'static> {
+pub struct Wazemmes<BackendData: 'static + Backend> {
     pub backend_data: BackendData,
     pub start_time: std::time::Instant,
     pub socket_name: OsString,
@@ -60,6 +61,17 @@ pub struct Wazemmes<BackendData: 'static> {
 }
 
 impl<B: Backend> Wazemmes<B> {
+    pub fn get_buffer_age(&mut self) -> usize {
+        let backend = &mut self.backend_data;
+        let full_redraw = backend.full_redraw();
+
+        if full_redraw > 0 {
+            0
+        } else {
+            backend.buffer_age().unwrap_or(0)
+        }
+    }
+
     pub fn new(
         handle: LoopHandle<CallLoopData<WinitData>>,
         display: &mut Display<Self>,
@@ -177,6 +189,9 @@ impl ClientData for ClientState {
 }
 
 pub trait Backend {
+    fn full_redraw(&mut self) -> u8;
+    fn buffer_age(&self) -> Option<usize>;
+    fn renderer(&mut self) -> &mut Gles2Renderer;
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
