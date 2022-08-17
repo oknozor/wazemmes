@@ -9,7 +9,7 @@ use crate::config::CONFIG;
 use crate::shell::node;
 use crate::shell::node::Node;
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::{WindowWarp};
+use crate::shell::window::WindowWarp;
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {

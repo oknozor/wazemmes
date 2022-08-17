@@ -14,7 +14,6 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::Serial;
 use std::sync::Mutex;
 
-
 use crate::Wazemmes;
 use smithay::wayland::SERIAL_COUNTER;
 

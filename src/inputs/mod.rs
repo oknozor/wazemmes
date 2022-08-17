@@ -86,6 +86,7 @@ impl<B: Backend> Wazemmes<B> {
                 };
 
                 let keysyms = handle.modified_syms();
+
                 if modifiers.alt && state == KeyState::Pressed {
                     match keysyms {
                         [xkb::KEY_t] => {
@@ -98,6 +99,11 @@ impl<B: Backend> Wazemmes<B> {
                             FilterResult::Intercept(KeyAction::MoveToWorkspace(0))
                         }
                         [xkb::KEY_eacute] => FilterResult::Intercept(KeyAction::MoveToWorkspace(1)),
+                        _ => FilterResult::Forward,
+                    }
+                } else if modifiers.shift && modifiers.ctrl && state == KeyState::Pressed {
+                    match keysyms {
+                        [xkb::KEY_space] => FilterResult::Intercept(KeyAction::ToggleFloating),
                         _ => FilterResult::Forward,
                     }
                 } else if modifiers.ctrl && state == KeyState::Pressed {
@@ -114,11 +120,6 @@ impl<B: Backend> Wazemmes<B> {
                         [xkb::KEY_l] => {
                             FilterResult::Intercept(KeyAction::MoveFocus(Direction::Right))
                         }
-                        _ => FilterResult::Forward,
-                    }
-                } else if modifiers.shift && modifiers.ctrl {
-                    match keysyms {
-                        [xkb::KEY_space] => FilterResult::Intercept(KeyAction::ToggleFloating),
                         _ => FilterResult::Forward,
                     }
                 } else {

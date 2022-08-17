@@ -81,6 +81,13 @@ impl Workspace {
         self.focused.clone()
     }
 
+    pub fn get_focused_window(&self) -> Option<(u32, WindowWarp)> {
+        let container = self.focused.get();
+        container
+            .get_focused_window()
+            .map(|(id, w)| (id, w.clone()))
+    }
+
     pub fn create_container(&mut self, layout: ContainerLayout) -> ContainerRef {
         let child = {
             let focused = self.get_container_focused();

@@ -6,7 +6,6 @@ use smithay::backend::input::{
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::protocol::wl_pointer;
 use smithay::reexports::wayland_server::{Display, DisplayHandle};
-use smithay::reexports::x11rb::protocol::xproto::ConnectionExt;
 use smithay::utils::{Logical, Point};
 use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus, MotionEvent};
 use smithay::wayland::{Serial, SERIAL_COUNTER};
@@ -40,10 +39,7 @@ impl<B: Backend> Wazemmes<B> {
                 let ws = self.get_current_workspace();
                 let mut ws = ws.get_mut();
                 ws.pop_container();
-                let focused = ws.get_container_focused();
-                let focused = focused.get();
-                let window = focused.get_focused_window();
-                if let Some((_id, window)) = window {
+                if let Some((_id, window)) = ws.get_focused_window() {
                     self.set_window_focus(
                         &mut display.handle(),
                         SERIAL_COUNTER.next_serial(),
@@ -77,11 +73,9 @@ impl<B: Backend> Wazemmes<B> {
                 }
 
                 let ws = self.get_current_workspace();
-                let ws = ws.get_mut();
-                let focused = ws.get_container_focused();
-                let focused = focused.get();
-                let window = focused.get_focused_window();
-                if let Some((_id, window)) = window {
+                let ws = ws.get();
+
+                if let Some((_id, window)) = ws.get_focused_window() {
                     self.set_window_focus(
                         &mut display.handle(),
                         SERIAL_COUNTER.next_serial(),
@@ -91,12 +85,9 @@ impl<B: Backend> Wazemmes<B> {
             }
             ContainerState::HasWindows => {
                 let ws = self.get_current_workspace();
-                let ws = ws.get_mut();
-                let focused = ws.get_container_focused();
-                let focused = focused.get();
-                let window = focused.get_focused_window();
+                let ws = ws.get();
 
-                if let Some((_id, window)) = window {
+                if let Some((_id, window)) = ws.get_focused_window() {
                     self.set_window_focus(
                         &mut display.handle(),
                         SERIAL_COUNTER.next_serial(),
@@ -112,11 +103,7 @@ impl<B: Backend> Wazemmes<B> {
         let workspace = workspace.get();
 
         {
-            let container = workspace.get_container_focused();
-
-            let container = container.get_mut();
-
-            if let Some((_, window)) = container.get_focused_window() {
+            if let Some((_, window)) = workspace.get_focused_window() {
                 let handle = self
                     .seat
                     .get_keyboard()
