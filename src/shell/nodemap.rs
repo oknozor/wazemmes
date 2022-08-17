@@ -1,5 +1,4 @@
-
-use std::collections::hash_map::{Iter};
+use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 
 use crate::shell::container::ContainerRef;
@@ -17,21 +16,21 @@ pub struct NodeMap {
 }
 
 impl NodeMap {
-    pub fn iter_spine(&self) -> impl Iterator<Item=(usize, &u32, &Node)> {
+    pub fn iter_spine(&self) -> impl Iterator<Item = (usize, &u32, &Node)> {
         self.spine.iter().enumerate().map(|(idx, id)| {
             let node = self.items.get(id).unwrap();
             (idx, id, node)
         })
     }
 
-    pub fn iter_windows(&self) -> impl Iterator<Item=&WindowWarp> {
+    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWarp> {
         self.items.values().filter_map(|node| match node {
             Node::Container(_) => None,
             Node::Window(w) => Some(w),
         })
     }
 
-    pub fn iter_containers(&self) -> impl Iterator<Item=&ContainerRef> {
+    pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
         self.items.values().filter_map(|node| match node {
             Node::Container(c) => Some(c),
             Node::Window(_) => None,
@@ -47,7 +46,8 @@ impl NodeMap {
     }
 
     pub fn drain_containers(&mut self) -> Vec<(u32, Node)> {
-        let ids: Vec<u32> = self.items
+        let ids: Vec<u32> = self
+            .items
             .iter()
             .filter(|(_k, v)| v.is_container())
             .map(|(id, _n)| id)
@@ -76,8 +76,7 @@ impl NodeMap {
     }
 
     pub fn extend(&mut self, other: Vec<(u32, Node)>) {
-        let ids: Vec<u32> = other.iter().map(|(id, _)| *id)
-            .collect();
+        let ids: Vec<u32> = other.iter().map(|(id, _)| *id).collect();
         self.spine.extend_from_slice(ids.as_slice());
         self.items.extend(other)
     }
@@ -96,6 +95,10 @@ impl NodeMap {
 
     pub fn get(&self, id: &u32) -> Option<&Node> {
         self.items.get(id)
+    }
+
+    pub fn get_mut(&mut self, id: &u32) -> Option<&mut Node> {
+        self.items.get_mut(id)
     }
 
     pub fn insert(&mut self, id: u32, node: Node) {
@@ -118,8 +121,15 @@ impl NodeMap {
             .and_then(|id| self.items.remove(&id))
     }
 
-    pub fn len(&self) -> usize {
-        self.spine.len()
+    pub fn tiled_element_len(&self) -> usize {
+        self.items
+            .values()
+            .filter(|node| match node {
+                Node::Container(_) => true,
+                Node::Window(w) if !w.is_floating() => true,
+                _ => false,
+            })
+            .count()
     }
 
     pub fn iter(&self) -> Iter<'_, u32, Node> {
@@ -129,10 +139,7 @@ impl NodeMap {
     fn remove_from_spine(&mut self, id: &u32) -> Option<u32> {
         // Find the matching id in spine
         let spine_part = {
-            let parts = self.spine
-                .iter()
-                .enumerate()
-                .find(|(_idx, id_)| *id_ == id);
+            let parts = self.spine.iter().enumerate().find(|(_idx, id_)| *id_ == id);
 
             parts.map(|(idx, id)| (idx, *id))
         };
@@ -143,9 +150,11 @@ impl NodeMap {
             if self.spine.is_empty() {
                 self.focus_idx = None
             } else {
-                self.focus_idx = self.spine[..idx].iter().enumerate().rfind(|(_idx, id)| {
-                    matches!(self.items.get(id), Some(Node::Window(_)))
-                }).map(|(idx, _)| idx);
+                self.focus_idx = self.spine[..idx]
+                    .iter()
+                    .enumerate()
+                    .rfind(|(_idx, id)| matches!(self.items.get(id), Some(Node::Window(_))))
+                    .map(|(idx, _)| idx);
             }
             Some(id)
         } else {
@@ -154,7 +163,9 @@ impl NodeMap {
     }
 
     pub fn set_focus(&mut self, id: u32) {
-        self.focus_idx = self.spine.iter()
+        self.focus_idx = self
+            .spine
+            .iter()
             .enumerate()
             .find(|(_, id_)| **id_ == id)
             .map(|(idx, _)| idx);

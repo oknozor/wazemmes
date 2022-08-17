@@ -3,13 +3,33 @@ use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::utils::{Logical, Size};
 use smithay::wayland::shell::xdg::ToplevelSurface;
+use std::cell::RefCell;
 
-#[derive(Debug, Copy, Clone)]
-pub struct WindowId(u32);
+#[derive(Debug, Clone)]
+pub struct WindowState {
+    id: RefCell<u32>,
+    floating: RefCell<bool>,
+}
 
-impl WindowId {
-    pub fn get(&self) -> u32 {
-        self.0
+impl WindowState {
+    fn new() -> Self {
+        Self {
+            id: RefCell::new(node::id::next()),
+            floating: RefCell::new(false),
+        }
+    }
+
+    pub(crate) fn id(&self) -> u32 {
+        *self.id.borrow()
+    }
+
+    pub(crate) fn is_floating(&self) -> bool {
+        *self.floating.borrow()
+    }
+
+    fn toggle_floating(&self) {
+        let current = *self.floating.borrow();
+        self.floating.replace(!current);
     }
 }
 
@@ -19,6 +39,10 @@ pub struct WindowWarp {
 }
 
 impl WindowWarp {
+    pub fn get_state(&self) -> &WindowState {
+        self.inner.user_data().get::<WindowState>().unwrap()
+    }
+
     pub fn toplevel(&self) -> &ToplevelSurface {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => toplevel,
@@ -27,7 +51,7 @@ impl WindowWarp {
     }
 
     pub fn id(&self) -> u32 {
-        self.inner.user_data().get::<WindowId>().unwrap().0
+        self.inner.user_data().get::<WindowState>().unwrap().id()
     }
 
     pub fn get(&self) -> &Window {
@@ -58,10 +82,16 @@ impl WindowWarp {
 
     pub(crate) fn new(toplevel: ToplevelSurface) -> Self {
         let window = Window::new(Kind::Xdg(toplevel));
-        window
-            .user_data()
-            .insert_if_missing(|| WindowId(node::id::next()));
+        window.user_data().insert_if_missing(WindowState::new);
 
         WindowWarp { inner: window }
+    }
+
+    pub fn toggle_floating(&mut self) {
+        self.get_state().toggle_floating();
+    }
+
+    pub fn is_floating(&self) -> bool {
+        self.get_state().is_floating()
     }
 }

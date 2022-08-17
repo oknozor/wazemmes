@@ -133,3 +133,79 @@ where
         Ok(())
     }
 }
+
+pub struct BorderElement<T: Texture> {
+    texture: T,
+    position: Point<i32, Logical>,
+    size: Size<i32, Logical>,
+}
+
+impl<T: Texture> BorderElement<T> {
+    pub fn new(texture: T, window_pos: Point<i32, Logical>) -> BorderElement<T> {
+        let size = texture.size().to_logical(1, Transform::Normal);
+        BorderElement {
+            texture,
+            position: window_pos,
+            size,
+        }
+    }
+}
+
+impl<R> RenderElement<R> for BorderElement<<R as Renderer>::TextureId>
+where
+    R: Renderer + ImportAll,
+    <R as Renderer>::TextureId: 'static,
+{
+    fn id(&self) -> usize {
+        0
+    }
+
+    fn location(&self, scale: impl Into<Scale<f64>>) -> Point<f64, Physical> {
+        self.position.to_f64().to_physical(scale)
+    }
+
+    fn geometry(&self, scale: impl Into<Scale<f64>>) -> Rectangle<i32, Physical> {
+        Rectangle::from_loc_and_size(self.position, self.size).to_physical_precise_round(scale)
+    }
+
+    fn accumulated_damage(
+        &self,
+        scale: impl Into<Scale<f64>>,
+        _: Option<SpaceOutputTuple<'_, '_>>,
+    ) -> Vec<Rectangle<i32, Physical>> {
+        let scale = scale.into();
+        vec![Rectangle::from_loc_and_size(self.position, self.size).to_physical_precise_up(scale)]
+    }
+
+    fn opaque_regions(
+        &self,
+        _scale: impl Into<Scale<f64>>,
+    ) -> Option<Vec<Rectangle<i32, Physical>>> {
+        None
+    }
+
+    fn draw(
+        &self,
+        _renderer: &mut R,
+        frame: &mut <R as Renderer>::Frame,
+        scale: impl Into<Scale<f64>>,
+        location: Point<f64, Physical>,
+        _damage: &[Rectangle<i32, Physical>],
+        _log: &Logger,
+    ) -> Result<(), <R as Renderer>::Error> {
+        let scale = scale.into();
+        frame.render_texture_at(
+            &self.texture,
+            location.to_i32_round(),
+            1,
+            scale,
+            Transform::Normal,
+            &[Rectangle::from_loc_and_size(
+                (0, 0),
+                self.size.to_physical_precise_round(scale),
+            )],
+            1.0,
+        )?;
+        Ok(())
+    }
+}

@@ -1,18 +1,15 @@
-use crate::shell::window::WindowWarp;
+use std::cell::{Ref, RefCell, RefMut};
+use std::rc::Rc;
+
+use smithay::desktop::Space;
+use smithay::wayland::output::Output;
+use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::config::CONFIG;
 use crate::shell::node;
 use crate::shell::node::Node;
-use smithay::desktop::Space;
-use smithay::wayland::output::Output;
-use smithay::wayland::shell::xdg::ToplevelSurface;
-use std::cell::{Ref, RefCell, RefMut};
-
-
-
-use std::rc::Rc;
-
 use crate::shell::nodemap::NodeMap;
+use crate::shell::window::WindowWarp;
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {
@@ -40,7 +37,8 @@ impl ContainerRef {
         if this.nodes.contains(&id) {
             Some(self.clone())
         } else {
-            this.nodes.iter_containers()
+            this.nodes
+                .iter_containers()
                 .find_map(|c| c.container_having_window(id))
         }
     }
@@ -50,10 +48,14 @@ impl ContainerRef {
         if &this.id == id {
             Some(self.clone())
         } else {
-            this.nodes.items.get(id)
+            this.nodes
+                .items
+                .get(id)
                 .and_then(|node| node.try_into().ok())
-        }.or_else(|| {
-            this.nodes.iter_containers()
+        }
+        .or_else(|| {
+            this.nodes
+                .iter_containers()
                 .find_map(|c| c.find_container_by_id(id))
         })
     }
@@ -108,6 +110,16 @@ impl Container {
         if let Some(focus) = self.nodes.get_focused() {
             let window = self.nodes.get(focus);
             window.map(|window| (*focus, window.try_into().unwrap()))
+        } else {
+            None
+        }
+    }
+
+    pub fn get_focused_window_mut(&mut self) -> Option<(u32, &'_ mut WindowWarp)> {
+        let focused = self.nodes.get_focused().cloned();
+        if let Some(focus) = focused {
+            let window = self.nodes.get_mut(&focus);
+            window.map(|window| (focus, window.try_into().unwrap()))
         } else {
             None
         }
@@ -177,11 +189,11 @@ impl Container {
     // Fully redraw a container, its window an children containers
     // Call this on the root of the tree to refresh a workspace
     pub fn redraw(&mut self, space: &mut Space) {
-        if self.nodes.len() == 0 {
+        if self.nodes.tiled_element_len() == 0 {
             return;
         }
 
-        let len = self.nodes.len();
+        let len = self.nodes.tiled_element_len();
         let non_zero_length = if len == 0 { 1 } else { len };
         let gaps = CONFIG.gaps as i32;
         let total_gaps = (len - 1) as i32 * gaps;
@@ -203,17 +215,16 @@ impl Container {
 
         self.reparent_orphans();
 
-
         for (idx, id, node) in self.nodes.iter_spine() {
-            if idx > 0 {
-                match self.layout {
-                    ContainerLayout::Vertical => y += height + gaps,
-                    ContainerLayout::Horizontal => x += width + gaps,
-                }
-            };
-
             match node {
                 Node::Container(container) => {
+                    if idx > 0 {
+                        match self.layout {
+                            ContainerLayout::Vertical => y += height + gaps,
+                            ContainerLayout::Horizontal => x += width + gaps,
+                        }
+                    };
+
                     let mut child = container.get_mut();
                     child.x = x;
                     child.y = y;
@@ -221,11 +232,19 @@ impl Container {
                     child.height = height;
                     child.redraw(space);
                 }
-                Node::Window(window) => {
+                Node::Window(window) if !window.is_floating() => {
+                    if idx > 0 {
+                        match self.layout {
+                            ContainerLayout::Vertical => y += height + gaps,
+                            ContainerLayout::Horizontal => x += width + gaps,
+                        }
+                    };
+
                     let activate = Some(*id) == self.get_focused_window().map(|(id, _w)| id);
                     window.configure(space, (width, height), activate);
                     space.map_window(window.get(), (x, y), None, activate);
                 }
+                Node::Window(_) => {}
             }
         }
     }

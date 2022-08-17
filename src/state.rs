@@ -53,6 +53,7 @@ pub struct Wazemmes<BackendData: 'static> {
     pub workspaces: HashMap<u8, WorkspaceRef>,
     pub current_workspace: u8,
     pub next_layout: Option<ContainerLayout>,
+    pub mod_pressed: bool,
 
     // Seat
     pub seat: Seat<Self>,
@@ -153,6 +154,7 @@ impl<B: Backend> Wazemmes<B> {
             next_layout: None,
             running: Arc::new(AtomicBool::new(true)),
             popups: popup_manager,
+            mod_pressed: false,
         }
     }
 

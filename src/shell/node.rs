@@ -25,7 +25,19 @@ impl TryInto<WindowWarp> for Node {
     }
 }
 
-impl TryInto<WindowWarp> for    &Node {
+impl<'a> TryInto<&'a mut WindowWarp> for &'a mut Node {
+    // TODO: this error
+    type Error = &'static str;
+
+    fn try_into(self) -> Result<&'a mut WindowWarp, Self::Error> {
+        match self {
+            Node::Container(_) => Err("tried to unwrap a window got a container"),
+            Node::Window(w) => Ok(w),
+        }
+    }
+}
+
+impl TryInto<WindowWarp> for &Node {
     // TODO: this error
     type Error = &'static str;
 

@@ -1,3 +1,4 @@
+use slog_scope::debug;
 use smithay::delegate_xdg_shell;
 use smithay::desktop::{Kind, Space, WindowSurfaceType};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -5,7 +6,7 @@ use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
 use smithay::wayland::compositor::with_states;
-use smithay::wayland::seat::{PointerGrabStartData, Seat};
+use smithay::wayland::seat::{Focus, PointerGrabStartData, Seat};
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
     XdgToplevelSurfaceRoleAttributes,
@@ -13,6 +14,7 @@ use smithay::wayland::shell::xdg::{
 use smithay::wayland::Serial;
 use std::sync::Mutex;
 
+use crate::inputs::grabs::MoveSurfaceGrab;
 use crate::Wazemmes;
 use smithay::wayland::SERIAL_COUNTER;
 
@@ -61,10 +63,37 @@ impl<Backend> XdgShellHandler for Wazemmes<Backend> {
     fn move_request(
         &mut self,
         _dh: &DisplayHandle,
-        _surface: ToplevelSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
+        surface: ToplevelSurface,
+        seat: wl_seat::WlSeat,
+        serial: Serial,
     ) {
+        debug!("Move request");
+        let seat: Seat<Wazemmes<Backend>> = Seat::from_resource(&seat).unwrap();
+
+        let wl_surface = surface.wl_surface();
+
+        match check_grab(&seat, wl_surface, serial) {
+            Some(start_data) if self.mod_pressed => {
+                let pointer = seat.get_pointer().unwrap();
+
+                let window = self
+                    .space
+                    .window_for_surface(wl_surface, WindowSurfaceType::TOPLEVEL)
+                    .unwrap()
+                    .clone();
+
+                let initial_window_location = self.space.window_location(&window).unwrap();
+
+                let grab = MoveSurfaceGrab {
+                    start_data,
+                    window,
+                    initial_window_location,
+                };
+
+                pointer.set_grab(grab, serial, Focus::Clear);
+            }
+            _ => {}
+        }
     }
 
     fn resize_request(
@@ -108,6 +137,7 @@ fn check_grab<Backend>(
     serial: Serial,
 ) -> Option<PointerGrabStartData> {
     let pointer = seat.get_pointer()?;
+    debug!("Check grab");
 
     // Check that this surface has a click grab.
     if !pointer.has_grab(serial) {
@@ -123,6 +153,7 @@ fn check_grab<Backend>(
         return None;
     }
 
+    debug!("Grab detected");
     Some(start_data)
 }
 

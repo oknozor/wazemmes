@@ -20,7 +20,7 @@ use crate::shell::workspace::WorkspaceRef;
 use crate::{Backend, CallLoopData, Wazemmes};
 
 pub struct WinitData {
-    backend: WinitGraphicsBackend,
+    pub backend: WinitGraphicsBackend,
     full_redraw: u8,
 }
 

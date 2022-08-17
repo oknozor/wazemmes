@@ -1,4 +1,4 @@
-use slog::debug;
+use slog_scope::debug;
 use smithay::backend::input::{Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent};
 
 use smithay::reexports::wayland_server::{Display, DisplayHandle};
@@ -10,6 +10,7 @@ use crate::Backend;
 use handlers::Direction;
 use smithay::wayland::seat::keysyms as xkb;
 
+pub(crate) mod grabs;
 mod handlers;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -19,6 +20,7 @@ pub enum KeyAction {
     MoveToWorkspace(u8),
     LayoutVertical,
     LayoutHorizontal,
+    ToggleFloating,
     Close,
     None,
 }
@@ -33,7 +35,7 @@ impl<B: Backend> Wazemmes<B> {
             InputEvent::Keyboard { event, .. } => {
                 let action = self.keyboard_key_to_action::<I>(&display.handle(), event);
                 if action != KeyAction::None {
-                    debug!(&self.log, "keyboard action triggered: {:?}", action)
+                    debug!("keyboard action triggered: {:?}", action)
                 };
 
                 match action {
@@ -46,6 +48,7 @@ impl<B: Backend> Wazemmes<B> {
                         self.move_to_workspace(num, &display.handle())
                     }
                     KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
+                    KeyAction::ToggleFloating => self.toggle_floating(),
                 }
             }
             InputEvent::PointerMotion { .. } => {}
@@ -67,13 +70,21 @@ impl<B: Backend> Wazemmes<B> {
     ) -> KeyAction {
         let keycode = evt.key_code();
         let state = evt.state();
-        debug!(self.log, "key"; "keycode" => keycode, "state" => format!("{:?}", state));
+        debug!("key"; "keycode" => keycode, "state" => format!("{:?}", state));
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&evt);
         let keyboard = self.seat.get_keyboard().unwrap();
 
         keyboard
             .input(dh, keycode, state, serial, time, |modifiers, handle| {
+                if modifiers.alt {
+                    debug!("Mod active");
+                    self.mod_pressed = true
+                } else {
+                    debug!("Mod released");
+                    self.mod_pressed = false
+                };
+
                 let keysyms = handle.modified_syms();
                 if modifiers.alt && state == KeyState::Pressed {
                     match keysyms {
@@ -103,6 +114,11 @@ impl<B: Backend> Wazemmes<B> {
                         [xkb::KEY_l] => {
                             FilterResult::Intercept(KeyAction::MoveFocus(Direction::Right))
                         }
+                        _ => FilterResult::Forward,
+                    }
+                } else if modifiers.shift && modifiers.ctrl {
+                    match keysyms {
+                        [xkb::KEY_space] => FilterResult::Intercept(KeyAction::ToggleFloating),
                         _ => FilterResult::Forward,
                     }
                 } else {

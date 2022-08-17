@@ -1,15 +1,15 @@
-use smithay::desktop::{Space};
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::wayland::output::Output;
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
-use slog_scope::warn;
-use smithay::utils::{Logical, Rectangle};
 use crate::config::CONFIG;
 use crate::shell::container::{Container, ContainerLayout, ContainerRef};
 use crate::shell::node;
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::{WindowWarp};
+use crate::shell::window::WindowWarp;
+use slog_scope::warn;
+use smithay::desktop::Space;
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::utils::{Logical, Rectangle};
+use smithay::wayland::output::Output;
+use std::cell::{Ref, RefCell, RefMut};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct WorkspaceRef {

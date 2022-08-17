@@ -1,15 +1,16 @@
-use crate::shell::workspace::WorkspaceRef;
-use crate::Wazemmes;
+use std::cell::RefCell;
+
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;
 
-use std::cell::RefCell;
+use crate::shell::workspace::WorkspaceRef;
+use crate::Wazemmes;
 
 pub mod container;
 pub mod node;
+pub mod nodemap;
 pub mod window;
 pub mod workspace;
-pub mod nodemap;
 
 #[derive(Default)]
 pub struct FullscreenSurface(RefCell<Option<Window>>);
@@ -18,6 +19,7 @@ impl FullscreenSurface {
     pub fn set(&self, window: Window) {
         *self.0.borrow_mut() = Some(window);
     }
+
     pub fn get(&self) -> Option<Window> {
         self.0.borrow().clone()
     }
