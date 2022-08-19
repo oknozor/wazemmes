@@ -192,14 +192,17 @@ impl Container {
     // Fully redraw a container, its window an children containers
     // Call this on the root of the tree to refresh a workspace
     pub fn redraw(&mut self, space: &mut Space) {
-        if self.nodes.tiled_element_len() == 0 {
+        let tiled_elements_len = self.nodes.tiled_element_len();
+        if tiled_elements_len == 0 {
             return;
         }
-
-        let len = self.nodes.tiled_element_len();
-        let non_zero_length = if len == 0 { 1 } else { len };
+        let non_zero_length = if tiled_elements_len == 0 {
+            1
+        } else {
+            tiled_elements_len
+        };
         let gaps = CONFIG.gaps as i32;
-        let total_gaps = (len - 1) as i32 * gaps;
+        let total_gaps = (tiled_elements_len - 1) as i32 * gaps;
 
         let (width, height) = match self.layout {
             ContainerLayout::Vertical => {
@@ -244,9 +247,6 @@ impl Container {
                     };
 
                     let activate = Some(*id) == self.get_focused_window().map(|window| window.id());
-                    let state = window.get_state();
-                    state.set_location((x, y));
-                    state.set_size((width, height));
                     window.configure(space, (width, height), activate);
                     space.map_window(window.get(), (x, y), None, activate);
                 }

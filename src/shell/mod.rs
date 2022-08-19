@@ -1,10 +1,7 @@
-use std::cell::RefCell;
-
-use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;
 
 use crate::shell::workspace::WorkspaceRef;
-use crate::{Backend, Wazemmes};
+use crate::Wazemmes;
 
 pub mod container;
 pub mod node;
@@ -12,23 +9,7 @@ pub mod nodemap;
 pub mod window;
 pub mod workspace;
 
-#[derive(Default)]
-pub struct FullscreenSurface(RefCell<Option<Window>>);
-
-impl FullscreenSurface {
-    pub fn set(&self, window: Window) {
-        *self.0.borrow_mut() = Some(window);
-    }
-
-    pub fn get(&self) -> Option<Window> {
-        self.0.borrow().clone()
-    }
-    pub fn clear(&self) -> Option<Window> {
-        self.0.borrow_mut().take()
-    }
-}
-
-impl<BackendData: Backend> Wazemmes<BackendData> {
+impl Wazemmes {
     pub fn get_current_workspace(&self) -> WorkspaceRef {
         let current = &self.current_workspace;
         self.workspaces
@@ -48,17 +29,13 @@ impl<BackendData: Backend> Wazemmes<BackendData> {
         current_workspace.unmap_all(&mut self.space);
         self.current_workspace = num;
 
-        let age = self.get_buffer_age();
-        let renderer = self.backend_data.renderer();
         match self.workspaces.get(&num) {
             None => {
                 let output = self.space.outputs().next().unwrap();
                 let workspace = WorkspaceRef::new(output.clone(), &self.space);
                 self.workspaces.insert(num, workspace);
             }
-            Some(workspace) => workspace
-                .get_mut()
-                .map_all(&mut self.space, dh, renderer, age),
+            Some(workspace) => workspace.get_mut().map_all(&mut self.space, dh),
         };
 
         self.space.refresh(dh);

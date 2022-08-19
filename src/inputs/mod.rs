@@ -1,14 +1,22 @@
-use slog_scope::debug;
-use smithay::backend::input::{Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent};
-
-use smithay::reexports::wayland_server::{Display, DisplayHandle};
-use smithay::wayland::seat::FilterResult;
+use crate::backend::{BackendHandler, InputHandler, OutputId};
+use crate::inputs::handlers::Direction;
+use crate::state::seat::SeatState;
+use crate::{CallLoopData, Wazemmes};
+use slog_scope::{debug, info};
+use smithay::backend::input::{
+    Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerButtonEvent,
+    PointerMotionAbsoluteEvent, PointerMotionEvent,
+};
+use smithay::backend::session::auto::AutoSession;
+use smithay::backend::session::Session;
+use smithay::desktop::WindowSurfaceType;
+use smithay::reexports::wayland_server::protocol::wl_pointer;
+use smithay::reexports::wayland_server::DisplayHandle;
+use smithay::utils::{Logical, Point};
+use smithay::wayland::seat::{
+    keysyms as xkb, ButtonEvent, FilterResult, MotionEvent, PointerHandle,
+};
 use smithay::wayland::SERIAL_COUNTER;
-
-use crate::state::Wazemmes;
-use crate::Backend;
-use handlers::Direction;
-use smithay::wayland::seat::keysyms as xkb;
 
 pub(crate) mod grabs;
 mod handlers;
@@ -21,45 +29,107 @@ pub enum KeyAction {
     LayoutVertical,
     LayoutHorizontal,
     ToggleFloating,
+    VtSwitch(i32),
     Close,
+    Quit,
     None,
 }
 
-impl<B: Backend> Wazemmes<B> {
-    pub fn process_input_event<I: InputBackend>(
+impl InputHandler for CallLoopData {
+    fn process_input_event<I: InputBackend>(
         &mut self,
-        display: &mut Display<Wazemmes<B>>,
         event: InputEvent<I>,
+        output_id: Option<&OutputId>,
+        session: Option<&mut AutoSession>,
     ) {
+        let absolute_output = self
+            .state
+            .space
+            .outputs()
+            .find(|o| o.user_data().get::<OutputId>() == output_id)
+            .cloned();
+
         match event {
             InputEvent::Keyboard { event, .. } => {
-                let action = self.keyboard_key_to_action::<I>(&display.handle(), event);
-                if action != KeyAction::None {
-                    debug!("keyboard action triggered: {:?}", action)
-                };
-
-                match action {
-                    KeyAction::Run(cmd) => Self::run(cmd),
-                    KeyAction::Close => self.close(&display),
-                    KeyAction::LayoutVertical => self.set_layout_v(),
-                    KeyAction::LayoutHorizontal => self.set_layout_h(),
-                    KeyAction::None => {}
-                    KeyAction::MoveToWorkspace(num) => {
-                        self.move_to_workspace(num, &display.handle())
-                    }
-                    KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
-                    KeyAction::ToggleFloating => self.toggle_floating(),
-                }
+                self.process_shortcut::<I>(&self.display.handle(), event, session)
             }
-            InputEvent::PointerMotion { .. } => {}
+            InputEvent::PointerMotion { event } => {
+                let _pointer = self.state.seat.get_pointer().unwrap();
+                let seat_state = SeatState::for_seat(&self.state.seat);
+
+                let mut position = seat_state.pointer_pos() + event.delta();
+
+                let max_x = self.state.space.outputs().fold(0, |acc, o| {
+                    acc + self.state.space.output_geometry(o).unwrap().size.w
+                });
+
+                let max_y = self
+                    .state
+                    .space
+                    .outputs()
+                    .next()
+                    .map(|o| self.state.space.output_geometry(o).unwrap().size.h)
+                    .unwrap_or_default();
+
+                position.x = position.x.max(0.0).min(max_x as f64 - 1.0);
+                position.y = position.y.max(0.0).min(max_y as f64 - 1.0);
+            }
             InputEvent::PointerMotionAbsolute { event, .. } => {
-                self.handle_pointer_motion::<I>(&display, &event)
+                let pointer = self.state.seat.get_pointer().unwrap();
+
+                let output = absolute_output
+                    .unwrap_or_else(|| self.state.space.outputs().next().unwrap().clone());
+                let output_geo = self.state.space.output_geometry(&output).unwrap();
+                let output_loc = output_geo.loc.to_f64();
+
+                let position = output_loc + event.position_transformed(output_geo.size);
+
+                SeatState::for_seat(&self.state.seat).set_pointer_pos(position);
+                self.state.pointer_motion(pointer, position, event.time());
             }
             InputEvent::PointerButton { event, .. } => {
-                self.handle_pointer_button::<I>(&display, &event)
+                self.handle_pointer_button::<I>(&self.display.handle(), &event)
             }
-            InputEvent::PointerAxis { event, .. } => self.handle_pointer_axis::<I>(&display, event),
+            InputEvent::PointerAxis { event, .. } => {
+                self.handle_pointer_axis::<I>(&self.display.handle(), event)
+            }
             _ => {}
+        }
+    }
+}
+
+impl CallLoopData {
+    fn process_shortcut<I: InputBackend>(
+        &mut self,
+        display: &DisplayHandle,
+        event: <I as InputBackend>::KeyboardKeyEvent,
+        session: Option<&mut AutoSession>,
+    ) {
+        let action = self.keyboard_key_to_action::<I>(display, event);
+        if action != KeyAction::None {
+            debug!("keyboard action triggered: {:?}", action)
+        };
+
+        match action {
+            KeyAction::Run(cmd) => Self::run(cmd),
+            KeyAction::Close => self.close(display),
+            KeyAction::LayoutVertical => self.set_layout_v(),
+            KeyAction::LayoutHorizontal => self.set_layout_h(),
+            KeyAction::None => {}
+            KeyAction::MoveToWorkspace(num) => self.state.move_to_workspace(num, display),
+            KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
+            KeyAction::ToggleFloating => self.toggle_floating(),
+            KeyAction::Quit => {
+                info!("Quitting");
+                self.close_compositor();
+            }
+            KeyAction::VtSwitch(vt) => {
+                if let Some(session) = session {
+                    session.change_vt(vt as i32).ok();
+                } else {
+                    debug!("VtSwitch is not supported with this backend")
+                }
+            }
         }
     }
 
@@ -73,21 +143,25 @@ impl<B: Backend> Wazemmes<B> {
         debug!("key"; "keycode" => keycode, "state" => format!("{:?}", state));
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&evt);
-        let keyboard = self.seat.get_keyboard().unwrap();
+        let keyboard = self.state.seat.get_keyboard().unwrap();
 
         keyboard
             .input(dh, keycode, state, serial, time, |modifiers, handle| {
                 if modifiers.alt {
-                    debug!("Mod active");
-                    self.mod_pressed = true
+                    self.state.mod_pressed = true
                 } else {
-                    debug!("Mod released");
-                    self.mod_pressed = false
+                    self.state.mod_pressed = false
                 };
 
                 let keysyms = handle.modified_syms();
 
-                if modifiers.alt && state == KeyState::Pressed {
+                if modifiers.shift && modifiers.ctrl && state == KeyState::Pressed {
+                    match keysyms {
+                        [xkb::KEY_space] => FilterResult::Intercept(KeyAction::ToggleFloating),
+                        [xkb::KEY_Q] => FilterResult::Intercept(KeyAction::Quit),
+                        _ => FilterResult::Forward,
+                    }
+                } else if modifiers.alt && state == KeyState::Pressed {
                     match keysyms {
                         [xkb::KEY_t] => {
                             FilterResult::Intercept(KeyAction::Run("alacritty".to_string()))
@@ -99,11 +173,6 @@ impl<B: Backend> Wazemmes<B> {
                             FilterResult::Intercept(KeyAction::MoveToWorkspace(0))
                         }
                         [xkb::KEY_eacute] => FilterResult::Intercept(KeyAction::MoveToWorkspace(1)),
-                        _ => FilterResult::Forward,
-                    }
-                } else if modifiers.shift && modifiers.ctrl && state == KeyState::Pressed {
-                    match keysyms {
-                        [xkb::KEY_space] => FilterResult::Intercept(KeyAction::ToggleFloating),
                         _ => FilterResult::Forward,
                     }
                 } else if modifiers.ctrl && state == KeyState::Pressed {
@@ -123,9 +192,42 @@ impl<B: Backend> Wazemmes<B> {
                         _ => FilterResult::Forward,
                     }
                 } else {
-                    FilterResult::Forward
+                    match keysyms {
+                        [xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12] => {
+                            FilterResult::Intercept(KeyAction::VtSwitch(
+                                (keysyms[0] - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+                            ))
+                        }
+                        _ => FilterResult::Forward,
+                    }
                 }
             })
             .unwrap_or(KeyAction::None)
+    }
+}
+
+impl Wazemmes {
+    fn pointer_motion(
+        &mut self,
+        pointer: PointerHandle<Self>,
+        position: Point<f64, Logical>,
+        time: u32,
+    ) {
+        let under = self
+            .space
+            .surface_under(position, WindowSurfaceType::all())
+            .map(|(_, surface, location)| (surface, location));
+
+        let dh = self.display.clone();
+        pointer.motion(
+            self,
+            &dh,
+            &MotionEvent {
+                location: position,
+                focus: under,
+                serial: SERIAL_COUNTER.next_serial(),
+                time,
+            },
+        );
     }
 }

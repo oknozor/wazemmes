@@ -4,12 +4,20 @@
 - [x] move focus
 - [x] gaps
 - [ ] decoration
-- [ ] floating window
+- [x] floating window
+- [ ] fullscreen_window
+- [x] border 
+    - [x] focused
+    - [ ] all
 - [ ] stack layout
 - [ ] configuration
 - [ ] sigterm on close ? 
 - [ ] app id/class etc
 - [ ] ipc server
-- [ ] udev
-- [ ] xwayland
-- [ ] vulkan
+- [ ] backend 
+  - [ ] udev
+  - [x] winit
+  - [x] x11
+  - [ ] xwayland
+  - [ ] vulkan
+- [ ] play Elden Ring

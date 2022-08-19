@@ -4,7 +4,6 @@ use crate::shell::node;
 use crate::shell::nodemap::NodeMap;
 use crate::shell::window::WindowWrap;
 use slog_scope::warn;
-use smithay::backend::renderer::gles2::Gles2Renderer;
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Rectangle};
@@ -79,6 +78,7 @@ impl Workspace {
     }
 
     pub fn get_focus(&self) -> (ContainerRef, Option<WindowWrap>) {
+        // FIXME: panic here some time
         let window = {
             let c = self.focus.get();
             c.get_focused_window()
@@ -136,13 +136,7 @@ impl Workspace {
         }
     }
 
-    pub fn map_all(
-        &self,
-        space: &mut Space,
-        dh: &DisplayHandle,
-        _renderer: &mut Gles2Renderer,
-        _age: usize,
-    ) {
+    pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
         let root = self.root();
         let mut root = root.get_mut();
         root.redraw(space);

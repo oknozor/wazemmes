@@ -1,24 +1,21 @@
 use slog_scope::debug;
 use smithay::delegate_xdg_shell;
-use smithay::desktop::{Kind, Space, WindowSurfaceType};
+
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
-
-use smithay::wayland::compositor::with_states;
 use smithay::wayland::seat::{PointerGrabStartData, Seat};
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
-    XdgToplevelSurfaceRoleAttributes,
 };
 use smithay::wayland::Serial;
-use std::sync::Mutex;
 
-use crate::{Backend, Wazemmes};
+use crate::Wazemmes;
 use smithay::wayland::SERIAL_COUNTER;
 
-impl<BackendData: Backend> XdgShellHandler for Wazemmes<BackendData> {
+impl XdgShellHandler for Wazemmes {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
         &mut self.xdg_shell_state
     }
@@ -51,7 +48,6 @@ impl<BackendData: Backend> XdgShellHandler for Wazemmes<BackendData> {
             handle.set_focus(dh, Some(surface.wl_surface()), serial);
             let root = workspace.root();
             let mut root = root.get_mut();
-
             root.redraw(space);
         }
     }
@@ -81,7 +77,7 @@ impl<BackendData: Backend> XdgShellHandler for Wazemmes<BackendData> {
         serial: Serial,
         _edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat: Seat<Wazemmes<BackendData>> = Seat::from_resource(&seat).unwrap();
+        let seat: Seat<Wazemmes> = Seat::from_resource(&seat).unwrap();
 
         let wl_surface = surface.wl_surface();
 
@@ -106,10 +102,10 @@ impl<BackendData: Backend> XdgShellHandler for Wazemmes<BackendData> {
 }
 
 // Xdg Shell
-delegate_xdg_shell!(@<BackendData: 'static + Backend> Wazemmes<BackendData>);
+delegate_xdg_shell!(Wazemmes);
 
-fn check_grab<BackendData: Backend>(
-    seat: &Seat<Wazemmes<BackendData>>,
+fn check_grab(
+    seat: &Seat<Wazemmes>,
     surface: &WlSurface,
     serial: Serial,
 ) -> Option<PointerGrabStartData> {
@@ -132,29 +128,4 @@ fn check_grab<BackendData: Backend>(
 
     debug!("Grab detected");
     Some(start_data)
-}
-
-/// Should be called on `WlSurface::commit`
-pub fn handle_commit(space: &Space, surface: &WlSurface) -> Option<()> {
-    let window = space
-        .window_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-        .cloned()?;
-
-    if let Kind::Xdg(_) = window.toplevel() {
-        let initial_configure_sent = with_states(surface, |states| {
-            states
-                .data_map
-                .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .initial_configure_sent
-        });
-
-        if !initial_configure_sent {
-            window.configure();
-        }
-    }
-
-    Some(())
 }

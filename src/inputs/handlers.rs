@@ -2,28 +2,53 @@ use crate::inputs::grabs::MoveSurfaceGrab;
 use crate::shell::container::{ContainerLayout, ContainerState};
 use crate::shell::node::Node;
 use crate::shell::window::{WindowState, WindowWrap, FLOATING_Z_INDEX};
-use crate::state::Wazemmes;
-use crate::Backend;
+use crate::state::CallLoopData;
+
 use slog_scope::debug;
 use smithay::backend::input::{
     Axis, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
-    PointerMotionAbsoluteEvent,
 };
 use smithay::desktop::Window;
+use smithay::nix::libc;
 use smithay::reexports::wayland_server::protocol::wl_pointer;
-use smithay::reexports::wayland_server::{Display, DisplayHandle};
+use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Point};
-use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus, MotionEvent};
+use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus};
 use smithay::wayland::{Serial, SERIAL_COUNTER};
+use std::io;
+use std::os::unix::process::CommandExt;
+use std::process::{Command, Stdio};
 
-impl<B: Backend> Wazemmes<B> {
+impl CallLoopData {
     pub fn run(cmd: String) {
-        std::process::Command::new(cmd).spawn().ok();
+        let mut command = Command::new(cmd);
+        command.stdin(Stdio::null());
+        command.stdout(Stdio::null());
+        command.stderr(Stdio::null());
+
+        // Setup double-fork to avoid zombies.
+        unsafe {
+            command.pre_exec(|| {
+                match libc::fork() {
+                    -1 => return Err(io::Error::last_os_error()),
+                    0 => (),
+                    _ => libc::_exit(0),
+                }
+
+                if libc::setsid() == -1 {
+                    return Err(io::Error::last_os_error());
+                }
+
+                Ok(())
+            });
+        }
+
+        command.spawn().unwrap().wait().unwrap();
     }
 
-    pub fn close(&mut self, display: &&mut Display<Wazemmes<B>>) {
+    pub fn close(&mut self, display: &DisplayHandle) {
         let state = {
-            let container = self.get_current_workspace().get_mut().get_focus().0;
+            let container = self.state.get_current_workspace().get_mut().get_focus().0;
 
             let mut container = container.get_mut();
             debug!("Closing window in container: {}", container.id);
@@ -34,106 +59,91 @@ impl<B: Backend> Wazemmes<B> {
         match state {
             ContainerState::Empty => {
                 debug!("Closing empty container");
-                let ws = self.get_current_workspace();
+                let ws = self.state.get_current_workspace();
                 let mut ws = ws.get_mut();
                 ws.pop_container();
                 if let Some(window) = ws.get_focus().1 {
-                    self.toggle_window_focus(
-                        &mut display.handle(),
-                        SERIAL_COUNTER.next_serial(),
-                        window.get(),
-                    );
+                    self.toggle_window_focus(display, SERIAL_COUNTER.next_serial(), window.get());
                 }
             }
             ContainerState::HasContainersOnly => {
                 debug!("Draining window from container");
-                let container = {
-                    let ws = self.get_current_workspace();
-                    let ws = &ws.get_mut();
-                    ws.get_focus().0
-                };
+                {
+                    let container = {
+                        let ws = self.state.get_current_workspace();
+                        let ws = &ws.get_mut();
+                        ws.get_focus().0
+                    };
 
-                let children: Option<Vec<(u32, Node)>> = {
+                    let children: Option<Vec<(u32, Node)>> = {
+                        let mut container = container.get_mut();
+                        if container.parent.is_some() {
+                            Some(container.nodes.drain_all())
+                        } else {
+                            None
+                        }
+                    };
+
                     let mut container = container.get_mut();
-                    if container.parent.is_some() {
-                        Some(container.nodes.drain_all())
-                    } else {
-                        None
+                    let id = container.id;
+                    if let (Some(parent), Some(children)) = (&mut container.parent, children) {
+                        let mut parent = parent.get_mut();
+                        parent.nodes.remove(&id);
+                        parent.nodes.extend(children);
                     }
-                };
-
-                let mut container = container.get_mut();
-                let id = container.id;
-                if let (Some(parent), Some(children)) = (&mut container.parent, children) {
-                    let mut parent = parent.get_mut();
-                    parent.nodes.remove(&id);
-                    parent.nodes.extend(children);
                 }
 
-                let ws = self.get_current_workspace();
+                let ws = self.state.get_current_workspace();
                 let ws = ws.get();
 
                 if let Some(window) = ws.get_focus().1 {
-                    self.toggle_window_focus(
-                        &mut display.handle(),
-                        SERIAL_COUNTER.next_serial(),
-                        window.get(),
-                    );
+                    self.toggle_window_focus(display, SERIAL_COUNTER.next_serial(), window.get());
                 }
             }
             ContainerState::HasWindows => {
-                let ws = self.get_current_workspace();
+                let ws = self.state.get_current_workspace();
                 let ws = ws.get();
 
                 if let Some(window) = ws.get_focus().1 {
-                    self.toggle_window_focus(
-                        &mut display.handle(),
-                        SERIAL_COUNTER.next_serial(),
-                        window.get(),
-                    );
+                    self.toggle_window_focus(display, SERIAL_COUNTER.next_serial(), window.get());
                 }
                 debug!("Cannot remove non empty container");
             }
         };
 
         // Reset focus
-        let workspace = self.get_current_workspace();
+        let workspace = self.state.get_current_workspace();
         let workspace = workspace.get();
 
         {
             if let Some(window) = workspace.get_focus().1 {
                 let handle = self
+                    .state
                     .seat
                     .get_keyboard()
                     .expect("Should have a keyboard seat");
 
                 let serial = SERIAL_COUNTER.next_serial();
-                handle.set_focus(
-                    &display.handle(),
-                    Some(window.toplevel().wl_surface()),
-                    serial,
-                );
+                handle.set_focus(display, Some(window.toplevel().wl_surface()), serial);
             }
         }
 
         let root = workspace.root();
         let mut root = root.get_mut();
         if !root.has_container() {
-            let output = self.space.outputs().next().unwrap();
-            let geo = self.space.output_geometry(output).unwrap();
+            let output = self.state.space.outputs().next().unwrap();
+            let geo = self.state.space.output_geometry(output).unwrap();
             root.height = geo.size.h;
             root.width = geo.size.w;
         }
 
-        let _age = self.get_buffer_age();
-        let _renderer = self.backend_data.renderer();
-        let space = &mut self.space;
+        let space = &mut self.state.space;
         root.redraw(space);
     }
 
     pub fn handle_pointer_axis<I: InputBackend>(
         &mut self,
-        display: &&mut Display<Wazemmes<B>>,
+        dh: &DisplayHandle,
         event: <I as InputBackend>::PointerAxisEvent,
     ) {
         let source = wl_pointer::AxisSource::from(event.source());
@@ -167,23 +177,25 @@ impl<B: Backend> Wazemmes<B> {
             frame = frame.stop(wl_pointer::Axis::VerticalScroll);
         }
 
-        let dh = &mut display.handle();
-        self.seat.get_pointer().unwrap().axis(self, dh, frame);
+        self.state
+            .seat
+            .get_pointer()
+            .unwrap()
+            .axis(&mut self.state, dh, frame);
     }
 
     pub fn handle_pointer_button<I: InputBackend>(
         &mut self,
-        display: &&mut Display<Wazemmes<B>>,
+        dh: &DisplayHandle,
         event: &<I as InputBackend>::PointerButtonEvent,
     ) {
-        let dh = &mut display.handle();
-        let pointer = self.seat.get_pointer().unwrap();
+        let pointer = self.state.seat.get_pointer().unwrap();
         let serial = SERIAL_COUNTER.next_serial();
         let button = event.button_code();
         let button_state = wl_pointer::ButtonState::from(event.state());
 
         pointer.button(
-            self,
+            &mut self.state,
             dh,
             &ButtonEvent {
                 button,
@@ -195,10 +207,15 @@ impl<B: Backend> Wazemmes<B> {
 
         if let Some(MouseButton::Left) = event.button() {
             if wl_pointer::ButtonState::Pressed == button_state {
-                if let Some(window) = self.space.window_under(pointer.current_location()).cloned() {
+                if let Some(window) = self
+                    .state
+                    .space
+                    .window_under(pointer.current_location())
+                    .cloned()
+                {
                     let window = WindowWrap::from(window);
 
-                    if self.mod_pressed && window.is_floating() {
+                    if self.state.mod_pressed && window.is_floating() {
                         let pos = pointer.current_location();
                         let initial_window_location = (pos.x as i32, pos.y as i32).into();
                         let start_data = pointer.grab_start_data().unwrap();
@@ -214,7 +231,7 @@ impl<B: Backend> Wazemmes<B> {
                         pointer.set_grab(grab, serial, Focus::Clear);
                     } else {
                         let id = window.id();
-                        let ws = self.get_current_workspace();
+                        let ws = self.state.get_current_workspace();
                         let mut ws = ws.get_mut();
                         let container = ws.root().container_having_window(id).unwrap();
                         container.get_mut().set_focus(id);
@@ -223,74 +240,52 @@ impl<B: Backend> Wazemmes<B> {
                         ws.set_container_focused(focused_id);
                     }
                 } else {
-                    self.space.windows().for_each(|window| {
+                    self.state.space.windows().for_each(|window| {
                         window.set_activated(false);
                         window.configure();
                     });
 
-                    let keyboard = self.seat.get_keyboard().unwrap();
+                    let keyboard = self.state.seat.get_keyboard().unwrap();
                     keyboard.set_focus(dh, None, serial);
                 }
             }
         }
     }
 
-    fn toggle_window_focus(&mut self, dh: &mut DisplayHandle, serial: Serial, window: &Window) {
-        let keyboard = self.seat.get_keyboard().unwrap();
+    fn toggle_window_focus(&mut self, dh: &DisplayHandle, serial: Serial, window: &Window) {
+        let keyboard = self.state.seat.get_keyboard().unwrap();
 
-        self.space.windows().for_each(|window| {
+        self.state.space.windows().for_each(|window| {
             window.set_activated(false);
             window.configure();
         });
 
         let window = WindowWrap::from(window.clone());
-        self.space
-            .map_window(window.get(), window.location(), window.z_index(), true);
+        let location = self.state.space.window_bbox(window.get()).unwrap().loc;
+
+        self.state
+            .space
+            .map_window(window.get(), location, window.z_index(), true);
         keyboard.set_focus(dh, Some(window.toplevel().wl_surface()), serial);
         window.get().set_activated(true);
         window.get().configure();
     }
 
-    pub fn handle_pointer_motion<I: InputBackend>(
-        &mut self,
-        display: &&mut Display<Wazemmes<B>>,
-        event: &<I as InputBackend>::PointerMotionAbsoluteEvent,
-    ) {
-        let output = self.space.outputs().next().unwrap();
-        let geometry = self.space.output_geometry(output).unwrap();
-        let pos = event.position_transformed(geometry.size) + geometry.loc.to_f64();
-        let serial = SERIAL_COUNTER.next_serial();
-        let pointer = self.seat.get_pointer().unwrap();
-        let under = self.surface_under_pointer(&pointer);
-        let dh = &mut display.handle();
-
-        pointer.motion(
-            self,
-            dh,
-            &MotionEvent {
-                location: pos,
-                focus: under,
-                serial,
-                time: event.time(),
-            },
-        );
-    }
-
     pub fn set_layout_h(&mut self) {
-        self.next_layout = Some(ContainerLayout::Horizontal)
+        self.state.next_layout = Some(ContainerLayout::Horizontal)
     }
 
     pub fn set_layout_v(&mut self) {
-        self.next_layout = Some(ContainerLayout::Vertical)
+        self.state.next_layout = Some(ContainerLayout::Vertical)
     }
 
-    pub fn move_focus(&mut self, direction: Direction, display: &mut Display<Wazemmes<B>>) {
+    pub fn move_focus(&mut self, direction: Direction, display: &DisplayHandle) {
         let window = self.scan_window(direction);
 
         if let Some(window) = window {
             let serial = SERIAL_COUNTER.next_serial();
             let id = window.user_data().get::<WindowState>().unwrap().id();
-            let ws = self.get_current_workspace();
+            let ws = self.state.get_current_workspace();
             let mut ws = ws.get_mut();
             let container = ws.root().container_having_window(id).unwrap();
             container
@@ -298,71 +293,69 @@ impl<B: Backend> Wazemmes<B> {
                 .set_focus(WindowWrap::from(window.clone()).id());
             let focused_id = container.get().id;
             ws.set_container_focused(focused_id);
-            self.toggle_window_focus(&mut display.handle(), serial, &window);
+            self.toggle_window_focus(display, serial, &window);
         }
     }
 
     pub fn toggle_floating(&mut self) {
-        let ws = self.get_current_workspace();
+        let ws = self.state.get_current_workspace();
         let ws = ws.get();
         let focus = ws.get_focus();
 
         if let Some(window) = focus.1 {
-            let output = self.space.outputs().next().unwrap();
-            let geometry = self.space.output_geometry(output).unwrap();
+            let output = self.state.space.outputs().next().unwrap();
+            let geometry = self.state.space.output_geometry(output).unwrap();
             let y = geometry.size.h / 2 + geometry.loc.y;
             let x = geometry.size.w / 2 + geometry.loc.x;
 
             window.toggle_floating();
-            self.space
+            self.state
+                .space
                 .map_window(window.get(), (x, y), FLOATING_Z_INDEX, true);
             window.get().configure();
-            let space = &mut self.space;
+            let space = &mut self.state.space;
             focus.0.get_mut().redraw(space);
         }
     }
 
     fn scan_window(&mut self, direction: Direction) -> Option<Window> {
-        let ws = self.get_current_workspace();
+        let ws = self.state.get_current_workspace();
         let ws = ws.get();
         let focus = ws.get_focus();
         let mut window = None;
 
         if let Some(window_ref) = focus.1 {
             let loc = self
+                .state
                 .space
                 .window_location(window_ref.get())
                 .expect("window should have a location");
+
             let (mut x, mut y) = (loc.x, loc.y);
             let width = window_ref.get().geometry().size.w;
             let height = window_ref.get().geometry().size.h;
 
+            // Move one pixel inside the window to avoid being out of bbox after converting to f64
             match direction {
-                Direction::Left => y += height / 2,
                 Direction::Right => {
                     x += width;
-                    y += height / 2
+                    y += 1;
                 }
-                Direction::Up => {
-                    x += width / 2;
-                }
-                Direction::Down => {
-                    x += width / 2;
-                    y += height;
-                }
+                Direction::Down => y += height - 1,
+                Direction::Left => y += 1,
+                Direction::Up => x += 1,
             }
 
-            let mut point = Point::from((x as f64, y as f64));
-
+            let mut point = Point::from((x, y)).to_f64();
             while window.is_none() {
-                if self.space.output_under(point).next().is_none() {
+                if self.state.space.output_under(point).next().is_none() {
                     break;
                 }
 
                 direction.update_point(&mut point);
 
                 window = {
-                    let window = self.space.window_under(point);
+                    let window = self.state.space.window_under(point);
                     window.cloned()
                 };
             }

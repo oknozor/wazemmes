@@ -1,5 +1,5 @@
-use crate::shell::window::{WindowWrap, FLOATING_Z_INDEX};
-use crate::{Backend, Wazemmes};
+use crate::shell::window::FLOATING_Z_INDEX;
+use crate::Wazemmes;
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Point};
@@ -13,12 +13,12 @@ pub struct MoveSurfaceGrab {
     pub initial_window_location: Point<i32, Logical>,
 }
 
-impl<BackendData: Backend> PointerGrab<Wazemmes<BackendData>> for MoveSurfaceGrab {
+impl PointerGrab<Wazemmes> for MoveSurfaceGrab {
     fn motion(
         &mut self,
-        data: &mut Wazemmes<BackendData>,
+        data: &mut Wazemmes,
         _dh: &DisplayHandle,
-        handle: &mut PointerInnerHandle<'_, Wazemmes<BackendData>>,
+        handle: &mut PointerInnerHandle<'_, Wazemmes>,
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
@@ -28,20 +28,15 @@ impl<BackendData: Backend> PointerGrab<Wazemmes<BackendData>> for MoveSurfaceGra
         let new_location = self.initial_window_location.to_f64() + delta;
         let location = new_location.to_i32_round();
 
-        // Save the current window location
-        WindowWrap::from(self.window.clone())
-            .get_state()
-            .set_location(location);
-
         data.space
             .map_window(&self.window, location, FLOATING_Z_INDEX, true);
     }
 
     fn button(
         &mut self,
-        _data: &mut Wazemmes<BackendData>,
+        _data: &mut Wazemmes,
         _dh: &DisplayHandle,
-        handle: &mut PointerInnerHandle<'_, Wazemmes<BackendData>>,
+        handle: &mut PointerInnerHandle<'_, Wazemmes>,
         event: &ButtonEvent,
     ) {
         handle.button(event.button, event.state, event.serial, event.time);
@@ -53,9 +48,9 @@ impl<BackendData: Backend> PointerGrab<Wazemmes<BackendData>> for MoveSurfaceGra
 
     fn axis(
         &mut self,
-        _data: &mut Wazemmes<BackendData>,
+        _data: &mut Wazemmes,
         _dh: &DisplayHandle,
-        handle: &mut PointerInnerHandle<'_, Wazemmes<BackendData>>,
+        handle: &mut PointerInnerHandle<'_, Wazemmes>,
         details: AxisFrame,
     ) {
         handle.axis(details)

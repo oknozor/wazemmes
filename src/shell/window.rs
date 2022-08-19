@@ -2,10 +2,11 @@ use crate::shell::node;
 use slog_scope::debug;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::{Logical, Physical, Point, Rectangle, Size};
-use smithay::wayland::shell::xdg::ToplevelSurface;
+use smithay::utils::{Logical, Point, Rectangle, Size};
+use smithay::wayland::compositor;
+use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceRoleAttributes};
 use std::cell::RefCell;
-use smithay::wayland::output::Output;
+use std::sync::Mutex;
 
 pub const FLOATING_Z_INDEX: u8 = 255;
 pub const TILING_Z_INDEX: u8 = 100;
@@ -14,8 +15,7 @@ pub const TILING_Z_INDEX: u8 = 100;
 pub struct WindowState {
     id: RefCell<u32>,
     floating: RefCell<bool>,
-    location: RefCell<Point<i32, Logical>>,
-    size: RefCell<Size<i32, Logical>>,
+    configured: RefCell<bool>,
 }
 
 impl WindowState {
@@ -23,8 +23,7 @@ impl WindowState {
         Self {
             id: RefCell::new(node::id::next()),
             floating: RefCell::new(false),
-            location: RefCell::new((0, 0).into()),
-            size: Default::default(),
+            configured: RefCell::new(false),
         }
     }
 
@@ -36,24 +35,19 @@ impl WindowState {
         *self.floating.borrow()
     }
 
-    pub fn location(&self) -> Point<i32, Logical> {
-        *self.location.borrow()
+    pub fn configured(&self) -> bool {
+        *self.configured.borrow()
     }
 
-    pub fn set_location<P: Into<Point<i32, Logical>>>(&self, location: P) {
-        self.location.replace(location.into());
-    }
-
-    pub fn size(&self) -> Size<i32, Logical> {
-        *self.size.borrow()
-    }
-
-    pub fn set_size<S: Into<Size<i32, Logical>>>(&self, size: S) {
-        self.size.replace(size.into());
+    pub fn set_configured(&self) {
+        self.configured.replace(true);
     }
 
     fn toggle_floating(&self) {
-        debug!("Floating toogle for window[{}]", *self.id.borrow());
+        debug!(
+            "(WindowState) - Floating toggle for window[{}]",
+            *self.id.borrow()
+        );
         let current = *self.floating.borrow();
         self.floating.replace(!current);
     }
@@ -72,7 +66,29 @@ pub struct WindowBorder {
     pub bottom: Rectangle<i32, Logical>,
 }
 
+#[derive(Debug)]
+pub struct XdgTopLevelAttributes {
+    pub app_id: Option<String>,
+    pub title: Option<String>,
+}
+
 impl WindowWrap {
+    pub fn xdg_surface_attributes(&self) -> XdgTopLevelAttributes {
+        compositor::with_states(self.toplevel().wl_surface(), |states| {
+            let guard = states
+                .data_map
+                .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
+                .unwrap()
+                .lock()
+                .unwrap();
+
+            XdgTopLevelAttributes {
+                app_id: guard.app_id.clone(),
+                title: guard.title.clone(),
+            }
+        })
+    }
+
     pub fn get_state(&self) -> &WindowState {
         self.inner.user_data().get::<WindowState>().unwrap()
     }
@@ -115,19 +131,12 @@ impl WindowWrap {
     }
 
     pub fn toggle_floating(&self) {
+        debug!("(WindowWrap) - Floating toggle  for window[{}]", self.id());
         self.get_state().toggle_floating();
     }
 
     pub fn is_floating(&self) -> bool {
         self.get_state().is_floating()
-    }
-
-    pub fn location(&self) -> Point<i32, Logical> {
-        self.get_state().location()
-    }
-
-    pub fn size(&self) -> Size<i32, Logical> {
-        self.get_state().size()
     }
 
     pub fn z_index(&self) -> u8 {
@@ -138,51 +147,44 @@ impl WindowWrap {
         }
     }
 
-    pub fn get_borders(&self, output: &Output) -> WindowBorder {
-        let scale = output.current_scale().fractional_scale();
-        let window_loc: Point<i32, Logical> = self.location();
-        let (x, y) = (window_loc.x, window_loc.y);
-        let window_size: Size<i32, Logical> = self.size();
-        let (w, h) = (window_size.w, window_size.h);
+    pub fn get_borders(&self, space: &Space) -> Option<WindowBorder> {
+        space.window_bbox(self.get()).map(|rectangle| {
+            let window_loc: Point<i32, Logical> = rectangle.loc;
+            let (x, y) = (window_loc.x, window_loc.y);
+            let window_size: Size<i32, Logical> = rectangle.size;
+            let (w, h) = (window_size.w, window_size.h);
 
-        let geometry = Rectangle::from_loc_and_size(window_loc, window_size);
-        println!("Drawing border for {:?}", geometry);
+            let left = {
+                let topleft = (x - 2, y - 2);
+                let bottom_right = (x, y + h);
+                Rectangle::from_extemities(topleft, bottom_right)
+            };
 
+            let top = {
+                let topleft = (x, y - 2);
+                let bottom_right = (x + w + 2, y);
+                Rectangle::from_extemities(topleft, bottom_right)
+            };
 
-        let left = {
-            let topleft = (x - 2, y - 2);
-            let bottom_right = (x, y + h);
-            Rectangle::from_extemities(topleft, bottom_right)
-        };
+            let bottom = {
+                let topleft = (x - 2, y + h);
+                let bottom_right = (x + w + 2, y + h + 2);
+                Rectangle::from_extemities(topleft, bottom_right)
+            };
 
-        let top = {
-            let topleft = (x, y - 2);
-            let bottom_right = (x + w + 2, y);
-            Rectangle::from_extemities(topleft, bottom_right)
-        };
+            let right = {
+                let topleft = (x + w, y);
+                let bottom_right = (x + w + 2, y + h + 2);
+                Rectangle::from_extemities(topleft, bottom_right)
+            };
 
-        let bottom = {
-            let topleft = (x - 2, y + h);
-            let bottom_right = (x + w + 2, y + h + 2);
-            Rectangle::from_extemities(topleft, bottom_right)
-        };
-
-        let right = {
-            let topleft = (x + w, y);
-            let bottom_right = (x + w + 2, y + h + 2);
-            Rectangle::from_extemities(topleft, bottom_right)
-        };
-
-        let border = WindowBorder {
-            left,
-            right,
-            top,
-            bottom
-        };
-
-         println!("{:?}", border);
-        border
-
+            WindowBorder {
+                left,
+                right,
+                top,
+                bottom,
+            }
+        })
     }
 }
 

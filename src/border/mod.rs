@@ -12,6 +12,7 @@ use smithay::desktop::space::{RenderElement, SpaceOutputTuple};
 use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Transform};
 
 mod glow;
+
 use glow::{Program, Shader};
 
 pub struct QuadPipeline {
@@ -135,7 +136,16 @@ impl QuadElement {
 
 impl RenderElement<Gles2Renderer> for QuadElement {
     fn id(&self) -> usize {
-        id::next()
+        // Fixme: correctly handle negative values
+        let hash = format!(
+            "{}{}{}{}",
+            self.geometry.loc.x.abs(),
+            self.geometry.loc.y.abs(),
+            self.geometry.size.w.abs(),
+            self.geometry.size.h.abs()
+        );
+
+        hash.parse::<usize>().unwrap()
     }
 
     fn location(&self, scale: impl Into<Scale<f64>>) -> Point<f64, Physical> {
@@ -144,7 +154,7 @@ impl RenderElement<Gles2Renderer> for QuadElement {
 
     fn geometry(&self, scale: impl Into<Scale<f64>>) -> Rectangle<i32, Physical> {
         Rectangle::from_loc_and_size(self.geometry.loc, self.geometry.size)
-            .to_physical_precise_down(scale)
+            .to_physical_precise_round(scale)
     }
 
     fn accumulated_damage(
@@ -152,7 +162,7 @@ impl RenderElement<Gles2Renderer> for QuadElement {
         scale: impl Into<Scale<f64>>,
         _: Option<SpaceOutputTuple<'_, '_>>,
     ) -> Vec<Rectangle<i32, Physical>> {
-        vec![self.geometry.to_physical_precise_down(scale)]
+        vec![self.geometry.to_physical_precise_round(scale)]
     }
 
     fn opaque_regions(
@@ -162,6 +172,7 @@ impl RenderElement<Gles2Renderer> for QuadElement {
         None
     }
 
+    // TODO: Make sure this is not rendered on every frame
     fn draw(
         &self,
         renderer: &mut Gles2Renderer,
@@ -176,9 +187,9 @@ impl RenderElement<Gles2Renderer> for QuadElement {
                 self.output_geometry,
                 Rectangle::from_loc_and_size(
                     self.output_geometry.loc.to_f64() + location,
-                    self.geometry.size.to_f64().to_physical_precise_ceil(scale),
+                    self.geometry.size.to_f64().to_physical(scale),
                 ),
-                Transform::Flipped180,
+                Transform::Normal,
                 gl,
                 1.0,
             )
@@ -238,17 +249,3 @@ fn create_program(gl: &Gles2, vertex_shader_source: &str, fragment_shader_source
         program
     }
 }
-
-pub mod id {
-    use once_cell::sync::Lazy;
-    use std::sync::{Arc, Mutex};
-
-    static BORDER_ID_COUNTER: Lazy<Arc<Mutex<usize>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
-
-    pub fn next() -> usize {
-        let mut id = BORDER_ID_COUNTER.lock().unwrap();
-        *id += 1;
-        *id
-    }
-}
-

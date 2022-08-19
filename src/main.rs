@@ -3,35 +3,41 @@
 
 extern crate core;
 
-use crate::state::{Backend, Wazemmes};
-use crate::winit::WinitData;
+use crate::backend::BackendState;
+use crate::resources::pointer::PointerIcon;
+use crate::shell::workspace::WorkspaceRef;
+use crate::state::{CallLoopData, Wazemmes};
+use clap::Parser;
 use slog::Drain;
-use smithay::reexports::wayland_server::Display;
+use smithay::desktop;
+use smithay::reexports::calloop::generic::Generic;
+use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
+use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
+use smithay::reexports::wayland_server::{Display, Resource};
+use smithay::wayland::compositor::CompositorState;
+use smithay::wayland::data_device;
+use smithay::wayland::data_device::DataDeviceState;
+use smithay::wayland::dmabuf::DmabufState;
+use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::seat::{Seat, SeatState};
+use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
+use smithay::wayland::shell::xdg::XdgShellState;
+use smithay::wayland::shm::ShmState;
+use smithay::wayland::socket::ListeningSocketSource;
+use std::ffi::OsString;
+use std::sync::Arc;
+use std::time::Instant;
 
+mod backend;
+pub mod border;
+mod cli;
+mod config;
+pub mod draw;
 mod handlers;
 mod inputs;
+mod resources;
 mod shell;
-mod state;
-// mod udev;
-mod border;
-mod config;
-mod drawing;
-mod render;
-mod winit;
-
-pub struct CallLoopData<BackendData: 'static + Backend> {
-    state: Wazemmes<BackendData>,
-    display: Display<Wazemmes<BackendData>>,
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let log = init_log();
-    let _guard = slog_scope::set_global_logger(log.clone());
-
-    winit::init_winit(log);
-
-    Ok(())
-}
+pub mod state;
 
 fn init_log() -> slog::Logger {
     let terminal_drain = slog_envlogger::LogBuilder::new(
@@ -51,4 +57,128 @@ fn init_log() -> slog::Logger {
     slog_stdlog::init().expect("Could not setup log backend");
 
     log
+}
+
+struct ClientState;
+impl ClientData for ClientState {
+    fn initialized(&self, _client_id: ClientId) {}
+    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+}
+
+fn init_wayland_listener<D>(
+    display: &mut Display<D>,
+    event_loop: &mut EventLoop<CallLoopData>,
+    log: slog::Logger,
+) -> OsString {
+    // Creates a new listening socket, automatically choosing the next available `wayland` socket name.
+    let listening_socket = ListeningSocketSource::new_auto(log).unwrap();
+
+    // Get the name of the listening socket.
+    // Clients will connect to this socket.
+    let socket_name = listening_socket.socket_name().to_os_string();
+
+    let handle = event_loop.handle();
+
+    event_loop
+        .handle()
+        .insert_source(listening_socket, move |client_stream, _, state| {
+            // Inside the callback, you should insert the client into the display.
+            //
+            // You may also associate some data with the client when inserting the client.
+            state
+                .display
+                .handle()
+                .insert_client(client_stream, Arc::new(ClientState))
+                .unwrap();
+        })
+        .expect("Failed to init the wayland event source.");
+
+    // You also need to add the display itself to the event loop, so that client events will be processed by wayland-server.
+    handle
+        .insert_source(
+            Generic::new(display.backend().poll_fd(), Interest::READ, Mode::Level),
+            |_, _, state| {
+                state.display.dispatch_clients(&mut state.state).unwrap();
+                Ok(PostAction::Continue)
+            },
+        )
+        .unwrap();
+
+    socket_name
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let log = init_log();
+    let _guard = slog_scope::set_global_logger(log);
+
+    let opt = cli::WazemmesCli::parse();
+
+    let mut event_loop = EventLoop::<CallLoopData>::try_new()?;
+    let mut display = Display::new()?;
+    let socket_name = init_wayland_listener(&mut display, &mut event_loop, slog_scope::logger());
+    let pointer_icon = PointerIcon::new();
+    let dh = display.handle();
+    let compositor_state = CompositorState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+    let xdg_shell_state = XdgShellState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+    let shm_state = ShmState::new::<Wazemmes, _>(&dh, vec![], slog_scope::logger());
+    let output_manager_state = OutputManagerState::new_with_xdg_output::<Wazemmes>(&dh);
+    let seat_state = SeatState::<Wazemmes>::new();
+    let data_device_state = DataDeviceState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+    let xdg_decoration_state = XdgDecorationState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+
+    let dmabuf_state = DmabufState::new();
+
+    let mut seat = Seat::<Wazemmes>::new(&display.handle(), "seat0", slog_scope::logger());
+
+    seat.add_pointer({
+        let pointer_icon = pointer_icon.clone();
+        move |cursor| pointer_icon.on_new_cursor(cursor)
+    });
+
+    seat.add_keyboard(Default::default(), 200, 25, move |seat, focus| {
+        let focus = focus.and_then(|s| dh.get_client(s.id()).ok());
+        data_device::set_data_device_focus(&dh, seat, focus);
+    })?;
+
+    let state = Wazemmes {
+        space: desktop::Space::new(slog_scope::logger()),
+        display: display.handle(),
+        start_time: Instant::now(),
+        loop_signal: event_loop.get_signal(),
+        _loop_handle: event_loop.handle(),
+        seat,
+        compositor_state,
+        xdg_shell_state,
+        xdg_decoration_state,
+        shm_state,
+        _output_manager_state: output_manager_state,
+        seat_state,
+        data_device_state,
+        dmabuf_state,
+        pointer_icon,
+        backend: BackendState::default(),
+        socket_name,
+
+        // Shell
+        workspaces: Default::default(),
+        current_workspace: 0,
+        next_layout: None,
+        mod_pressed: false,
+    };
+
+    let mut data = CallLoopData { state, display };
+
+    backend::init(
+        &mut event_loop,
+        &data.display.handle(),
+        &mut data,
+        opt.backend,
+    );
+
+    event_loop.run(None, &mut data, |data| {
+        data.state.space.refresh(&data.display.handle());
+        data.display.flush_clients().unwrap();
+    })?;
+
+    Ok(())
 }

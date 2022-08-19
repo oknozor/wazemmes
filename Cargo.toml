@@ -7,6 +7,8 @@ edition = "2021"
 
 [dependencies]
 smithay = { git = "https://github.com/Smithay/smithay", features = ["backend_winit", "wayland_frontend", "desktop", "slog-stdlog"] }
+input = { version = "0.7", features = ["udev"], optional = true }
+
 xkbcommon = "0.4.1"
 slog = { version = "2.1.1" }
 slog-term = "2.8"
@@ -17,8 +19,27 @@ slog-envlogger = "2.2.0"
 bitflags = "1"
 once_cell = "1.13.0"
 cgmath = "0.18.0"
+image = { version = "0.24.3", default-features = false, optional = true, features = [
+    "png",
+]}
+
+xcursor = { version = "0.3.3", optional = true }
+thiserror = "1.0.32"
+fork = "0.1.19"
+eyre = "0.6.8"
+indexmap = "1.9.1"
+fps_ticker = "1.0.0"
+clap = { version = "3.2.17", features = ["derive"] }
+
+[dependencies.x11rb]
+optional = true
+version = "0.10.0"
+default-features = false
+features = [ "composite" ]
 
 [features]
-default = [ "egl", "winit" ]
+default = [ "egl", "winit", "udev", "xwayland" ]
 egl = [ "smithay/use_system_lib", "smithay/backend_egl" ]
 winit = [ "smithay/backend_winit" ]
+udev = [ "smithay/backend_libinput", "smithay/backend_udev", "smithay/backend_drm", "smithay/backend_gbm", "smithay/backend_egl", "smithay/backend_session", "image", "smithay/renderer_gl", "smithay/renderer_multi", "xcursor", "input" ]
+xwayland = [ "smithay/xwayland", "x11rb", "smithay/x11rb_event_source" ]

@@ -4,9 +4,8 @@ use smithay::wayland::shell::xdg::decoration::{XdgDecorationHandler};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
 use crate::Wazemmes;
-use crate::Backend;
 
-impl<BackendData: Backend> XdgDecorationHandler for Wazemmes<BackendData> {
+impl XdgDecorationHandler for Wazemmes {
     fn new_decoration(&mut self, _dh: &DisplayHandle, toplevel: ToplevelSurface) {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(Mode::ServerSide);
@@ -24,4 +23,4 @@ impl<BackendData: Backend> XdgDecorationHandler for Wazemmes<BackendData> {
     }
 }
 
-delegate_xdg_decoration!(@<BackendData: 'static + Backend> Wazemmes<BackendData>);
+delegate_xdg_decoration!(Wazemmes);
