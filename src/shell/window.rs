@@ -1,21 +1,21 @@
+use crate::backend::drawing::{FLOATING_Z_INDEX, TILING_Z_INDEX};
 use crate::shell::node;
 use slog_scope::debug;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
-use smithay::utils::{Logical, Point, Rectangle, Size};
+use smithay::utils::{Logical, Point, Size};
 use smithay::wayland::compositor;
+use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceRoleAttributes};
 use std::cell::RefCell;
 use std::sync::Mutex;
-
-pub const FLOATING_Z_INDEX: u8 = 255;
-pub const TILING_Z_INDEX: u8 = 100;
 
 #[derive(Debug, Clone)]
 pub struct WindowState {
     id: RefCell<u32>,
     floating: RefCell<bool>,
     configured: RefCell<bool>,
+    initial_size: RefCell<Size<i32, Logical>>,
 }
 
 impl WindowState {
@@ -24,6 +24,7 @@ impl WindowState {
             id: RefCell::new(node::id::next()),
             floating: RefCell::new(false),
             configured: RefCell::new(false),
+            initial_size: RefCell::new(Default::default()),
         }
     }
 
@@ -43,6 +44,14 @@ impl WindowState {
         self.configured.replace(true);
     }
 
+    pub fn initial_size(&self) -> Size<i32, Logical> {
+        *self.initial_size.borrow()
+    }
+
+    pub fn set_initial_geometry(&self, size: Size<i32, Logical>) {
+        self.initial_size.replace(size);
+    }
+
     fn toggle_floating(&self) {
         debug!(
             "(WindowState) - Floating toggle for window[{}]",
@@ -58,14 +67,6 @@ pub struct WindowWrap {
     inner: Window,
 }
 
-#[derive(Debug, Clone)]
-pub struct WindowBorder {
-    pub left: Rectangle<i32, Logical>,
-    pub right: Rectangle<i32, Logical>,
-    pub top: Rectangle<i32, Logical>,
-    pub bottom: Rectangle<i32, Logical>,
-}
-
 #[derive(Debug)]
 pub struct XdgTopLevelAttributes {
     pub app_id: Option<String>,
@@ -73,6 +74,20 @@ pub struct XdgTopLevelAttributes {
 }
 
 impl WindowWrap {
+    pub fn update_floating(&self, space: &mut Space, output: &Output, activate: bool) {
+        let (size, location) = if self.get_state().configured() {
+            let output_geometry = space.output_geometry(output).unwrap();
+            let initial_size = self.get_state().initial_size();
+            let size = initial_size;
+            let location = self.center(output_geometry.size);
+            (Some(size), location)
+        } else {
+            (None, (0, 0).into())
+        };
+
+        self.configure(space, size, location, activate);
+    }
+
     pub fn xdg_surface_attributes(&self) -> XdgTopLevelAttributes {
         compositor::with_states(self.toplevel().wl_surface(), |states| {
             let guard = states
@@ -108,22 +123,22 @@ impl WindowWrap {
         }
     }
 
-    pub fn configure<S: Into<Size<i32, Logical>>>(
-        &self,
-        space: &mut Space,
-        size: S,
-        activate: bool,
-    ) {
+    pub fn configure<S, P>(&self, space: &mut Space, size: Option<S>, location: P, activate: bool)
+    where
+        S: Into<Size<i32, Logical>>,
+        P: Into<Point<i32, Logical>>,
+    {
         let toplevel = self.toplevel();
-        let location = self.inner.bbox().loc;
 
-        toplevel.with_pending_state(|state| {
-            state.states.set(xdg_toplevel::State::Resizing);
-            state.size = Some(size.into())
-        });
+        if let Some(size) = size {
+            toplevel.with_pending_state(|state| {
+                state.states.set(xdg_toplevel::State::Resizing);
+                state.size = Some(size.into())
+            });
+        }
 
         toplevel.send_configure();
-        space.map_window(&self.inner, location, None, activate);
+        space.map_window(&self.inner, location, self.z_index(), activate);
     }
 
     pub fn send_close(&self) {
@@ -147,44 +162,15 @@ impl WindowWrap {
         }
     }
 
-    pub fn get_borders(&self, space: &Space) -> Option<WindowBorder> {
-        space.window_bbox(self.get()).map(|rectangle| {
-            let window_loc: Point<i32, Logical> = rectangle.loc;
-            let (x, y) = (window_loc.x, window_loc.y);
-            let window_size: Size<i32, Logical> = rectangle.size;
-            let (w, h) = (window_size.w, window_size.h);
-
-            let left = {
-                let topleft = (x - 2, y - 2);
-                let bottom_right = (x, y + h);
-                Rectangle::from_extemities(topleft, bottom_right)
-            };
-
-            let top = {
-                let topleft = (x, y - 2);
-                let bottom_right = (x + w + 2, y);
-                Rectangle::from_extemities(topleft, bottom_right)
-            };
-
-            let bottom = {
-                let topleft = (x - 2, y + h);
-                let bottom_right = (x + w + 2, y + h + 2);
-                Rectangle::from_extemities(topleft, bottom_right)
-            };
-
-            let right = {
-                let topleft = (x + w, y);
-                let bottom_right = (x + w + 2, y + h + 2);
-                Rectangle::from_extemities(topleft, bottom_right)
-            };
-
-            WindowBorder {
-                left,
-                right,
-                top,
-                bottom,
-            }
-        })
+    pub fn center(&self, output_size: Size<i32, Logical>) -> Point<i32, Logical> {
+        let center_y = output_size.h / 2;
+        let center_x = output_size.w / 2;
+        let window_geometry = self.inner.geometry();
+        let window_center_y = window_geometry.size.h / 2;
+        let window_center_x = window_geometry.size.w / 2;
+        let x = center_x - window_center_x;
+        let y = center_y - window_center_y;
+        Point::from((x, y))
     }
 }
 

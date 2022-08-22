@@ -45,10 +45,8 @@ where
         model: "Winit".into(),
     };
 
-    let output_id = OutputId { id: 1 };
-
     let output = NewOutputDescriptor {
-        id: output_id,
+        id: OutputId { id: 1 },
         physical_properties,
         transform: wl_output::Transform::Flipped180,
         name: OUTPUT_NAME.to_owned(),
@@ -56,6 +54,7 @@ where
         possible_modes: vec![mode],
     };
 
+    let output_id = output.id;
     handler.output_created(output);
     handler.start_compositor();
 
@@ -93,7 +92,7 @@ where
                         backend.submit(damage.as_deref()).unwrap();
                     }
 
-                    handler.send_frames();
+                    handler.send_frames(&output_id);
 
                     TimeoutAction::ToDuration(Duration::from_millis(16))
                 }

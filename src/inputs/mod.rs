@@ -4,18 +4,15 @@ use crate::state::seat::SeatState;
 use crate::{CallLoopData, Wazemmes};
 use slog_scope::{debug, info};
 use smithay::backend::input::{
-    Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerButtonEvent,
-    PointerMotionAbsoluteEvent, PointerMotionEvent,
+    Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerMotionAbsoluteEvent,
+    PointerMotionEvent,
 };
 use smithay::backend::session::auto::AutoSession;
 use smithay::backend::session::Session;
 use smithay::desktop::WindowSurfaceType;
-use smithay::reexports::wayland_server::protocol::wl_pointer;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Point};
-use smithay::wayland::seat::{
-    keysyms as xkb, ButtonEvent, FilterResult, MotionEvent, PointerHandle,
-};
+use smithay::wayland::seat::{keysyms as xkb, FilterResult, MotionEvent, PointerHandle};
 use smithay::wayland::SERIAL_COUNTER;
 
 pub(crate) mod grabs;
@@ -54,7 +51,7 @@ impl InputHandler for CallLoopData {
                 self.process_shortcut::<I>(&self.display.handle(), event, session)
             }
             InputEvent::PointerMotion { event } => {
-                let _pointer = self.state.seat.get_pointer().unwrap();
+                let pointer = self.state.seat.get_pointer().unwrap();
                 let seat_state = SeatState::for_seat(&self.state.seat);
 
                 let mut position = seat_state.pointer_pos() + event.delta();
@@ -73,6 +70,9 @@ impl InputHandler for CallLoopData {
 
                 position.x = position.x.max(0.0).min(max_x as f64 - 1.0);
                 position.y = position.y.max(0.0).min(max_y as f64 - 1.0);
+
+                seat_state.set_pointer_pos(position);
+                self.state.pointer_motion(pointer, position, event.time());
             }
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let pointer = self.state.seat.get_pointer().unwrap();
@@ -91,7 +91,10 @@ impl InputHandler for CallLoopData {
                 self.handle_pointer_button::<I>(&self.display.handle(), &event)
             }
             InputEvent::PointerAxis { event, .. } => {
-                self.handle_pointer_axis::<I>(&self.display.handle(), event)
+                let frame = handlers::basic_axis_frame::<I>(&event);
+
+                let pointer = self.state.seat.get_pointer().unwrap();
+                pointer.axis(&mut self.state, &self.display.handle(), frame);
             }
             _ => {}
         }
@@ -140,7 +143,8 @@ impl CallLoopData {
     ) -> KeyAction {
         let keycode = evt.key_code();
         let state = evt.state();
-        debug!("key"; "keycode" => keycode, "state" => format!("{:?}", state));
+        // TODO: can we filter that with env var ?
+        // debug!("key"; "keycode" => keycode, "state" => format!("{:?}", state));
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&evt);
         let keyboard = self.state.seat.get_keyboard().unwrap();

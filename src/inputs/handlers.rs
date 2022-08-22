@@ -1,12 +1,12 @@
 use crate::inputs::grabs::MoveSurfaceGrab;
 use crate::shell::container::{ContainerLayout, ContainerState};
 use crate::shell::node::Node;
-use crate::shell::window::{WindowState, WindowWrap, FLOATING_Z_INDEX};
+use crate::shell::window::{WindowState, WindowWrap};
 use crate::state::CallLoopData;
 
 use slog_scope::debug;
 use smithay::backend::input::{
-    Axis, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
+    Axis, AxisSource, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
 };
 use smithay::desktop::Window;
 use smithay::nix::libc;
@@ -133,55 +133,12 @@ impl CallLoopData {
         if !root.has_container() {
             let output = self.state.space.outputs().next().unwrap();
             let geo = self.state.space.output_geometry(output).unwrap();
-            root.height = geo.size.h;
-            root.width = geo.size.w;
+            root.size = geo.size;
         }
 
         let space = &mut self.state.space;
+        debug!("Redraw root container from `CallLoopData::close`");
         root.redraw(space);
-    }
-
-    pub fn handle_pointer_axis<I: InputBackend>(
-        &mut self,
-        dh: &DisplayHandle,
-        event: <I as InputBackend>::PointerAxisEvent,
-    ) {
-        let source = wl_pointer::AxisSource::from(event.source());
-
-        let horizontal_amount = event
-            .amount(Axis::Horizontal)
-            .unwrap_or_else(|| event.amount_discrete(Axis::Horizontal).unwrap() * 3.0);
-        let vertical_amount = event
-            .amount(Axis::Vertical)
-            .unwrap_or_else(|| event.amount_discrete(Axis::Vertical).unwrap() * 3.0);
-        let horizontal_amount_discrete = event.amount_discrete(Axis::Horizontal);
-        let vertical_amount_discrete = event.amount_discrete(Axis::Vertical);
-
-        let mut frame = AxisFrame::new(event.time()).source(source);
-
-        if horizontal_amount != 0.0 {
-            frame = frame.value(wl_pointer::Axis::HorizontalScroll, horizontal_amount);
-            if let Some(discrete) = horizontal_amount_discrete {
-                frame = frame.discrete(wl_pointer::Axis::HorizontalScroll, discrete as i32);
-            }
-        } else if source == wl_pointer::AxisSource::Finger {
-            frame = frame.stop(wl_pointer::Axis::HorizontalScroll);
-        }
-
-        if vertical_amount != 0.0 {
-            frame = frame.value(wl_pointer::Axis::VerticalScroll, vertical_amount);
-            if let Some(discrete) = vertical_amount_discrete {
-                frame = frame.discrete(wl_pointer::Axis::VerticalScroll, discrete as i32);
-            }
-        } else if source == wl_pointer::AxisSource::Finger {
-            frame = frame.stop(wl_pointer::Axis::VerticalScroll);
-        }
-
-        self.state
-            .seat
-            .get_pointer()
-            .unwrap()
-            .axis(&mut self.state, dh, frame);
     }
 
     pub fn handle_pointer_button<I: InputBackend>(
@@ -266,6 +223,7 @@ impl CallLoopData {
         self.state
             .space
             .map_window(window.get(), location, window.z_index(), true);
+
         keyboard.set_focus(dh, Some(window.toplevel().wl_surface()), serial);
         window.get().set_activated(true);
         window.get().configure();
@@ -303,16 +261,7 @@ impl CallLoopData {
         let focus = ws.get_focus();
 
         if let Some(window) = focus.1 {
-            let output = self.state.space.outputs().next().unwrap();
-            let geometry = self.state.space.output_geometry(output).unwrap();
-            let y = geometry.size.h / 2 + geometry.loc.y;
-            let x = geometry.size.w / 2 + geometry.loc.x;
-
             window.toggle_floating();
-            self.state
-                .space
-                .map_window(window.get(), (x, y), FLOATING_Z_INDEX, true);
-            window.get().configure();
             let space = &mut self.state.space;
             focus.0.get_mut().redraw(space);
         }
@@ -362,6 +311,43 @@ impl CallLoopData {
         }
         window
     }
+}
+
+pub fn basic_axis_frame<I: InputBackend>(evt: &I::PointerAxisEvent) -> AxisFrame {
+    let source = match evt.source() {
+        AxisSource::Continuous => wl_pointer::AxisSource::Continuous,
+        AxisSource::Finger => wl_pointer::AxisSource::Finger,
+        AxisSource::Wheel | AxisSource::WheelTilt => wl_pointer::AxisSource::Wheel,
+    };
+    let horizontal_amount = evt
+        .amount(Axis::Horizontal)
+        .unwrap_or_else(|| evt.amount_discrete(Axis::Horizontal).unwrap_or(0.0) * 3.0);
+    let vertical_amount = evt
+        .amount(Axis::Vertical)
+        .unwrap_or_else(|| evt.amount_discrete(Axis::Vertical).unwrap_or(0.0) * 3.0);
+    let horizontal_amount_discrete = evt.amount_discrete(Axis::Horizontal);
+    let vertical_amount_discrete = evt.amount_discrete(Axis::Vertical);
+
+    let mut frame = AxisFrame::new(evt.time()).source(source);
+    if horizontal_amount != 0.0 {
+        frame = frame.value(wl_pointer::Axis::HorizontalScroll, horizontal_amount);
+        if let Some(discrete) = horizontal_amount_discrete {
+            frame = frame.discrete(wl_pointer::Axis::HorizontalScroll, discrete as i32);
+        }
+    } else if source == wl_pointer::AxisSource::Finger {
+        frame = frame.stop(wl_pointer::Axis::HorizontalScroll);
+    }
+
+    if vertical_amount != 0.0 {
+        frame = frame.value(wl_pointer::Axis::VerticalScroll, vertical_amount);
+        if let Some(discrete) = vertical_amount_discrete {
+            frame = frame.discrete(wl_pointer::Axis::VerticalScroll, discrete as i32);
+        }
+    } else if source == wl_pointer::AxisSource::Finger {
+        frame = frame.stop(wl_pointer::Axis::VerticalScroll);
+    }
+
+    frame
 }
 
 #[derive(Debug, PartialEq, Eq)]

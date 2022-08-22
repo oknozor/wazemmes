@@ -1,11 +1,12 @@
 use crate::backend::{NewOutputDescriptor, OutputHandler, OutputId};
-use crate::border::QuadElement;
+use crate::border::{QuadElement, BLUE, RED};
 use crate::draw::pointer::PointerElement;
+use crate::shell::border::GetBorders;
 use crate::state::output::OutputState;
-use crate::{CallLoopData, Wazemmes};
-use slog_scope::debug;
+use crate::{BackendState, CallLoopData, Wazemmes};
 use smithay::backend::renderer::gles2::{Gles2Renderer, Gles2Texture};
 use smithay::desktop::space::SurfaceTree;
+use smithay::utils::Transform;
 use smithay::wayland::output::{Mode, Output};
 
 smithay::custom_elements! {
@@ -26,14 +27,6 @@ impl OutputHandler for CallLoopData {
 
         output.change_current_state(Some(desc.prefered_mode), Some(desc.transform), None, None);
 
-        // if let Some(c) = layout.find_output(&desc.name) {
-        //     output.change_current_state(Some(c.mode()), Some(desc.transform), None, None);
-        //     self.backend
-        //         .update_mode(output.user_data().get::<OutputId>().unwrap(), &c.mode());
-        // } else {
-        //     output.change_current_state(Some(desc.prefered_mode), Some(desc.transform), None, None);
-        // }
-
         let outputs: Vec<_> = self
             .state
             .space
@@ -43,20 +36,6 @@ impl OutputHandler for CallLoopData {
             .collect();
 
         let mut x = 0;
-
-        // // Map all configured outputs first
-        // for desc in layout.iter() {
-        //     if let Some(id) = outputs.iter().position(|o| o.name() == desc.name()) {
-        //         let output = outputs.remove(id);
-
-        //         let location = (x, 0).into();
-        //         self.space.map_output(&output, 1.0, location);
-
-        //         output.change_current_state(None, None, None, Some(location));
-
-        //         x += desc.mode().size.w;
-        //     }
-        // }
 
         // Put unconfigured outputs on the end
         for output in outputs.into_iter().rev() {
@@ -101,15 +80,12 @@ impl OutputHandler for CallLoopData {
             .to_i32_round();
 
         if let Some(tree) = self.state.pointer_icon.prepare_dnd_icon(location) {
-            debug!("preparing dnd icon");
             elems.push(tree.into());
         }
 
         if let Some(tree) = self.state.pointer_icon.prepare_cursor_icon(location) {
-            debug!("preparing cursor icon");
             elems.push(tree.into());
         } else if let Some(texture) = pointer_image {
-            debug!("preparing pointer image icon");
             elems.push(PointerElement::new(texture.clone(), location, false).into());
         }
 
@@ -123,9 +99,53 @@ impl OutputHandler for CallLoopData {
 
         let ws = self.state.get_current_workspace();
         let ws = ws.get();
-        let (_, window) = ws.get_focus();
+        let (container, window) = ws.get_focus();
+        let output_geometry = self.state.space.output_geometry(&output).map(|geometry| {
+            let scale = output.current_scale().fractional_scale();
+            geometry.to_f64().to_physical_precise_up(scale)
+        });
+
+        if let (Some(output_geometry), Some(borders)) =
+            (output_geometry, container.get_borders(&self.state.space))
+        {
+            let transform = self.transform_custom_element();
+
+            renderer
+                .with_context(|_renderer, gles| {
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        output_geometry,
+                        borders.left,
+                        transform,
+                        RED,
+                    )));
+
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        output_geometry,
+                        borders.top,
+                        transform,
+                        RED,
+                    )));
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        output_geometry,
+                        borders.right,
+                        transform,
+                        RED,
+                    )));
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        output_geometry,
+                        borders.bottom,
+                        transform,
+                        RED,
+                    )));
+                })
+                .unwrap()
+        }
+
         if let Some(window) = window {
-            // TODO: get the correct output, not just the first one
             let borders = window.get_borders(&self.state.space);
 
             let output_geometry = self.state.space.output_geometry(&output).map(|geometry| {
@@ -134,27 +154,38 @@ impl OutputHandler for CallLoopData {
             });
 
             if let (Some(output_geometry), Some(borders)) = (output_geometry, borders) {
+                let transform = self.transform_custom_element();
+
                 renderer
                     .with_context(|_renderer, gles| {
                         elems.push(CustomElem::from(QuadElement::new(
                             gles,
                             output_geometry,
                             borders.left,
+                            transform,
+                            BLUE,
                         )));
+
                         elems.push(CustomElem::from(QuadElement::new(
                             gles,
                             output_geometry,
                             borders.top,
+                            transform,
+                            BLUE,
                         )));
                         elems.push(CustomElem::from(QuadElement::new(
                             gles,
                             output_geometry,
                             borders.right,
+                            transform,
+                            BLUE,
                         )));
                         elems.push(CustomElem::from(QuadElement::new(
                             gles,
                             output_geometry,
                             borders.bottom,
+                            transform,
+                            BLUE,
                         )));
                     })
                     .unwrap()
@@ -174,5 +205,46 @@ impl OutputHandler for CallLoopData {
         }
 
         Ok(render_result)
+    }
+
+    fn send_frames(&mut self, output_id: &OutputId) {
+        let time = self.state.start_time.elapsed().as_millis() as u32;
+
+        // Send frames only to relevant outputs
+        for window in self.state.space.windows() {
+            let mut output = self.state.space.outputs_for_window(window);
+
+            // Sort by refresh
+            output.sort_by_key(|o| o.current_mode().map(|o| o.refresh).unwrap_or(0));
+            // Get output with highest refresh
+            let best_output_id = output.last().and_then(|o| o.user_data().get::<OutputId>());
+
+            if let Some(best_output_id) = best_output_id {
+                if best_output_id == output_id {
+                    window.send_frame(self.state.start_time.elapsed().as_millis() as u32);
+                }
+            } else {
+                window.send_frame(time);
+            }
+        }
+
+        for output in self.state.space.outputs() {
+            if output.user_data().get::<OutputId>() == Some(output_id) {
+                let map = smithay::desktop::layer_map_for_output(output);
+                for layer in map.layers() {
+                    layer.send_frame(time);
+                }
+            }
+        }
+    }
+}
+
+impl CallLoopData {
+    // QuadElement needs to be flipped when running via udev
+    fn transform_custom_element(&self) -> Transform {
+        match self.state.backend {
+            BackendState::Drm(_) => Transform::Flipped180,
+            BackendState::None => Transform::Normal,
+        }
     }
 }

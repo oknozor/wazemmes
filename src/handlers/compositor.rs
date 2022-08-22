@@ -76,9 +76,7 @@ impl CompositorHandler for Wazemmes {
 
     fn commit(&mut self, dh: &DisplayHandle, surface: &WlSurface) {
         on_commit_buffer_handler(surface);
-
         self.space.commit(surface);
-
         ensure_initial_configure(dh, surface, &mut self.space);
     }
 }
@@ -95,7 +93,6 @@ fn ensure_initial_configure(dh: &DisplayHandle, surface: &WlSurface, space: &mut
         },
         |_, _, _| true,
     );
-
     if let Some(window) = space
         .window_for_surface(surface, WindowSurfaceType::TOPLEVEL)
         .cloned()
@@ -116,9 +113,18 @@ fn ensure_initial_configure(dh: &DisplayHandle, surface: &WlSurface, space: &mut
                 (attributes.initial_configure_sent, attributes.configured)
             });
 
-            if !initial_configure_sent {
+            if initial_configure_sent && !configured {
+                // We need to check the initial size before storing it
+                // some client will send their initial size after configuration
+                let geometry = window.get().geometry();
+                if geometry.size.w != 0 && geometry.size.h != 0 {
+                    window.get_state().set_initial_geometry(geometry.size);
+                }
+            } else if !initial_configure_sent {
                 toplevel.send_configure();
             } else if configured && !window.get_state().configured() {
+                let geometry = window.get().geometry();
+                window.get_state().set_initial_geometry(geometry.size);
                 with_states(surface, |states| {
                     let attributes = states
                         .data_map
@@ -130,8 +136,6 @@ fn ensure_initial_configure(dh: &DisplayHandle, surface: &WlSurface, space: &mut
                     if let Some(app_id) = &attributes.app_id {
                         // TODO: configurable criteria
                         if app_id == "onagre" {
-                            toplevel.with_pending_state(|_state| todo!());
-
                             window.toggle_floating();
                         }
                     }

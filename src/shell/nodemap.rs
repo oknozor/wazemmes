@@ -1,5 +1,7 @@
+use smithay::utils::IsAlive;
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
 use crate::shell::container::ContainerRef;
 use crate::shell::node::Node;
@@ -16,10 +18,10 @@ pub struct NodeMap {
 }
 
 impl NodeMap {
-    pub fn iter_spine(&self) -> impl Iterator<Item = (usize, &u32, &Node)> {
-        self.spine.iter().enumerate().map(|(idx, id)| {
+    pub fn iter_spine(&self) -> impl Iterator<Item = (&u32, &Node)> {
+        self.spine.iter().map(|id| {
             let node = self.items.get(id).unwrap();
-            (idx, id, node)
+            (id, node)
         })
     }
 
@@ -63,6 +65,21 @@ impl NodeMap {
         }
 
         drained
+    }
+
+    pub fn remove_dead_windows(&mut self) {
+        let ids: Vec<u32> = self
+            .items
+            .iter()
+            .filter_map(|(_k, v)| v.try_into().ok())
+            .filter(|window: &WindowWrap| !window.get().alive())
+            .map(|window| window.id())
+            .collect();
+
+        for id in ids {
+            self.spine.drain_filter(|id_| id == *id_);
+            let _node = self.items.remove(&id).unwrap();
+        }
     }
 
     pub fn drain_all(&mut self) -> Vec<(u32, Node)> {
@@ -121,15 +138,18 @@ impl NodeMap {
             .and_then(|id| self.items.remove(&id))
     }
 
-    pub fn tiled_element_len(&self) -> usize {
-        self.items
+    pub fn tiled_element_len(&self) -> Option<NonZeroUsize> {
+        let len = self
+            .items
             .values()
             .filter(|node| match node {
                 Node::Container(_) => true,
                 Node::Window(w) if !w.is_floating() => true,
                 _ => false,
             })
-            .count()
+            .count();
+
+        NonZeroUsize::new(len)
     }
 
     pub fn iter(&self) -> Iter<'_, u32, Node> {

@@ -8,7 +8,7 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{DisplayHandle, Resource};
 use smithay::wayland::seat::{PointerGrabStartData, Seat};
 use smithay::wayland::shell::xdg::{
-    PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
+    Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
 use smithay::wayland::Serial;
 
@@ -23,7 +23,6 @@ impl XdgShellHandler for Wazemmes {
     fn new_toplevel(&mut self, dh: &DisplayHandle, surface: ToplevelSurface) {
         let workspace = self.get_current_workspace();
         let mut workspace = workspace.get_mut();
-        let space = &mut self.space;
 
         {
             let container = if let Some(layout) = self.next_layout {
@@ -46,9 +45,6 @@ impl XdgShellHandler for Wazemmes {
 
             let serial = SERIAL_COUNTER.next_serial();
             handle.set_focus(dh, Some(surface.wl_surface()), serial);
-            let root = workspace.root();
-            let mut root = root.get_mut();
-            root.redraw(space);
         }
     }
 
@@ -98,6 +94,16 @@ impl XdgShellHandler for Wazemmes {
         _serial: Serial,
     ) {
         // TODO popup grabs
+    }
+
+    // FIXME: redrawing everything on each ack is a bit too much
+    fn ack_configure(&mut self, _dh: &DisplayHandle, _surface: WlSurface, _configure: Configure) {
+        let ws = self.get_current_workspace();
+        let ws = ws.get();
+        let root = ws.root();
+        let mut root = root.get_mut();
+        let space = &mut self.space;
+        root.redraw(space);
     }
 }
 

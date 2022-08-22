@@ -15,15 +15,19 @@ mod glow;
 
 use glow::{Program, Shader};
 
+pub const BLUE: (f32, f32, f32) = (26.0 / 255.0, 95.0 / 255.0, 205.0 / 255.0);
+pub const RED: (f32, f32, f32) = (1.0, 95.0 / 255.0, 205.0 / 255.0);
+
 pub struct QuadPipeline {
     program: glow::Program,
     projection: glow::UniformLocation,
-    color: glow::UniformLocation,
+    gl_color: glow::UniformLocation,
+    color: (f32, f32, f32),
     position: u32, // AtributeLocation,
 }
 
 impl QuadPipeline {
-    pub fn new(gl: &Gles2) -> Self {
+    pub fn new(gl: &Gles2, border_color: (f32, f32, f32)) -> Self {
         let program = create_program(
             gl,
             include_str!("./shaders/quad.vert"),
@@ -42,7 +46,8 @@ impl QuadPipeline {
             program,
             projection,
             position,
-            color,
+            gl_color: color,
+            color: border_color,
         }
     }
 
@@ -88,10 +93,10 @@ impl QuadPipeline {
             );
 
             gl.Uniform4f(
-                self.color.0 as i32,
-                26.0 / 255.0,
-                95.0 / 255.0,
-                205.0 / 255.0,
+                self.gl_color.0 as i32,
+                self.color.0,
+                self.color.1,
+                self.color.2,
                 alpha,
             );
 
@@ -115,6 +120,7 @@ impl QuadPipeline {
 }
 
 pub struct QuadElement {
+    transform: Transform,
     pipeline: QuadPipeline,
     geometry: Rectangle<i32, Logical>,
     output_geometry: Rectangle<f64, Physical>,
@@ -125,9 +131,12 @@ impl QuadElement {
         gl: &Gles2,
         output_geometry: Rectangle<f64, Physical>,
         geometry: Rectangle<i32, Logical>,
+        transform: Transform,
+        color: (f32, f32, f32),
     ) -> Self {
         Self {
-            pipeline: QuadPipeline::new(gl),
+            transform,
+            pipeline: QuadPipeline::new(gl, color),
             geometry,
             output_geometry,
         }
@@ -189,11 +198,15 @@ impl RenderElement<Gles2Renderer> for QuadElement {
                     self.output_geometry.loc.to_f64() + location,
                     self.geometry.size.to_f64().to_physical(scale),
                 ),
-                Transform::Normal,
+                self.transform,
                 gl,
                 1.0,
             )
         })
+    }
+
+    fn z_index(&self) -> u8 {
+        255
     }
 }
 

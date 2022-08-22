@@ -3,6 +3,7 @@ use smithay::reexports::wayland_server::DisplayHandle;
 use crate::shell::workspace::WorkspaceRef;
 use crate::Wazemmes;
 
+pub mod border;
 pub mod container;
 pub mod node;
 pub mod nodemap;

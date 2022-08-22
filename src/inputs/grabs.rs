@@ -1,4 +1,4 @@
-use crate::shell::window::FLOATING_Z_INDEX;
+use crate::backend::drawing::FLOATING_Z_INDEX;
 use crate::Wazemmes;
 use smithay::desktop::Window;
 use smithay::reexports::wayland_server::DisplayHandle;

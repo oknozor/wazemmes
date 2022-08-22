@@ -13,7 +13,7 @@ use smithay::backend::egl::{EGLContext, EGLDevice, EGLDisplay};
 use smithay::backend::renderer::gles2::Gles2Renderbuffer;
 use smithay::backend::renderer::multigpu::egl::EglGlesBackend;
 use smithay::backend::renderer::multigpu::GpuManager;
-use smithay::backend::renderer::{Bind, Frame, Renderer};
+use smithay::backend::renderer::{Bind, Frame, ImportMem, Renderer};
 use smithay::backend::session::auto::AutoSession;
 use smithay::backend::session::Signal as SessionSignal;
 use smithay::reexports::calloop::LoopHandle;
@@ -173,14 +173,40 @@ impl Gpu {
             age
         };
 
+        let pointer_image = {
+            let backend_state = handler.backend_state().drm();
+
+            let frame = backend_state.pointer_image.get_image(1);
+
+            backend_state
+                .pointer_images
+                .iter()
+                .find_map(|(image, texture)| if image == &frame { Some(texture) } else { None })
+                .cloned()
+                .unwrap_or_else(|| {
+                    let texture = renderer
+                        .as_mut()
+                        .import_memory(
+                            &frame.pixels_rgba,
+                            (frame.width as i32, frame.height as i32).into(),
+                            false,
+                        )
+                        .expect("Failed to import cursor bitmap");
+                    backend_state.pointer_images.push((frame, texture.clone()));
+                    texture
+                })
+        };
+
+        let output_id = &DrmOutputId { drm_node, crtc }.output_id();
+
         handler.output_render(
             renderer.as_mut(),
-            &DrmOutputId { drm_node, crtc }.output_id(),
+            output_id,
             age as usize,
-            None,
+            Some(&pointer_image),
         )?;
 
-        handler.send_frames();
+        handler.send_frames(output_id);
 
         handler
             .backend_state()
@@ -241,6 +267,7 @@ impl GpuConnector {
         )??;
 
         self.gbm_surface.queue_buffer()?;
+        self.gbm_surface.reset_buffers();
 
         Ok(())
     }

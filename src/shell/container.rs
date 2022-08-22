@@ -1,7 +1,9 @@
 use std::cell::{Ref, RefCell, RefMut};
+use std::num::NonZeroUsize;
 use std::rc::Rc;
 
 use smithay::desktop::Space;
+use smithay::utils::{Logical, Point, Size};
 
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
@@ -66,10 +68,8 @@ impl ContainerRef {
 #[derive(Debug)]
 pub struct Container {
     pub id: u32,
-    pub x: i32,
-    pub y: i32,
-    pub width: i32,
-    pub height: i32,
+    pub location: Point<i32, Logical>,
+    pub size: Size<i32, Logical>,
     pub output: Output,
     pub parent: Option<ContainerRef>,
     pub nodes: NodeMap,
@@ -117,6 +117,23 @@ impl Container {
         }
     }
 
+    pub fn flatten_window(&self) -> Vec<WindowWrap> {
+        let mut windows: Vec<WindowWrap> = self.nodes.iter_windows().cloned().collect();
+
+        for child in self.nodes.iter_containers() {
+            let child = child.get();
+            windows.extend(child.flatten_window())
+        }
+
+        windows
+    }
+
+    pub fn set_focus(&mut self, window_id: u32) {
+        if self.nodes.get(&window_id).is_some() {
+            self.nodes.set_focus(window_id)
+        }
+    }
+
     pub fn get_focused_window_mut(&mut self) -> Option<(u32, &'_ mut WindowWrap)> {
         let focused = self.nodes.get_focused().cloned();
         if let Some(focus) = focused {
@@ -140,22 +157,22 @@ impl Container {
             self.layout = layout;
             parent
         } else {
-            let (width, height) = match self.layout {
-                ContainerLayout::Vertical => (self.width, self.height / 2),
-                ContainerLayout::Horizontal => (self.width / 2, self.height),
-            };
+            let size = match self.layout {
+                ContainerLayout::Vertical => (self.size.w, self.size.h / 2),
+                ContainerLayout::Horizontal => (self.size.w / 2, self.size.h),
+            }
+            .into();
 
-            let (x, y) = match self.layout {
-                ContainerLayout::Vertical => (self.x, self.y + height),
-                ContainerLayout::Horizontal => (self.x + width, self.y),
-            };
+            let location = match self.layout {
+                ContainerLayout::Vertical => (self.location.x, self.location.y + self.size.h),
+                ContainerLayout::Horizontal => (self.location.x + self.size.w, self.location.y),
+            }
+            .into();
 
             let mut child = Container {
                 id: node::id::next(),
-                x,
-                y,
-                width,
-                height,
+                location,
+                size,
                 output: self.output.clone(),
                 parent: Some(parent),
                 nodes: NodeMap::default(),
@@ -192,66 +209,107 @@ impl Container {
     // Fully redraw a container, its window an children containers
     // Call this on the root of the tree to refresh a workspace
     pub fn redraw(&mut self, space: &mut Space) {
-        let tiled_elements_len = self.nodes.tiled_element_len();
-        if tiled_elements_len == 0 {
+        // Ensure dead widow get remove before updating the container
+        self.nodes.remove_dead_windows();
+
+        // Don't draw anything if the container is empty
+        if self.nodes.spine.is_empty() {
             return;
         }
-        let non_zero_length = if tiled_elements_len == 0 {
-            1
-        } else {
-            tiled_elements_len
-        };
-        let gaps = CONFIG.gaps as i32;
-        let total_gaps = (tiled_elements_len - 1) as i32 * gaps;
 
-        let (width, height) = match self.layout {
-            ContainerLayout::Vertical => {
-                let w = self.width;
-                let h = (self.height - total_gaps) / non_zero_length as i32;
-                (w, h)
-            }
-            ContainerLayout::Horizontal => {
-                let w = (self.width - total_gaps) / non_zero_length as i32;
-                let h = self.height;
-                (w, h)
-            }
-        };
-
-        let (mut x, mut y) = (self.x, self.y);
-
+        // reparent sub children having containers only
         self.reparent_orphans();
 
-        for (idx, id, node) in self.nodes.iter_spine() {
-            match node {
-                Node::Container(container) => {
-                    if idx > 0 {
-                        match self.layout {
-                            ContainerLayout::Vertical => y += height + gaps,
-                            ContainerLayout::Horizontal => x += width + gaps,
-                        }
-                    };
+        // Initial geometry
+        let focused_window_id = self.get_focused_window().map(|window| window.id());
+        if let Some(size) = self.get_child_size() {
+            // Draw everything
+            let mut tiling_index = 0;
+            for (id, node) in self.nodes.iter_spine() {
+                match node {
+                    Node::Container(container) => {
+                        let mut child = container.get_mut();
+                        child.location = self.get_loc_for_index(tiling_index, size);
+                        child.size = size;
+                        child.redraw(space);
+                        tiling_index += 1;
+                    }
 
-                    let mut child = container.get_mut();
-                    child.x = x;
-                    child.y = y;
-                    child.width = width;
-                    child.height = height;
-                    child.redraw(space);
-                }
-                Node::Window(window) if !window.is_floating() => {
-                    if idx > 0 {
-                        match self.layout {
-                            ContainerLayout::Vertical => y += height + gaps,
-                            ContainerLayout::Horizontal => x += width + gaps,
-                        }
-                    };
+                    Node::Window(window) if window.is_floating() => {
+                        let activate = Some(*id) == focused_window_id;
+                        window.update_floating(space, &self.output, activate);
+                    }
 
-                    let activate = Some(*id) == self.get_focused_window().map(|window| window.id());
-                    window.configure(space, (width, height), activate);
-                    space.map_window(window.get(), (x, y), None, activate);
+                    Node::Window(window) => {
+                        let activate = Some(*id) == focused_window_id;
+                        let loc = self.get_loc_for_index(tiling_index, size);
+                        window.configure(space, Some(size), loc, activate);
+                        tiling_index += 1;
+                    }
                 }
-                Node::Window(_) => {}
             }
+        } else {
+            // Draw floating elements only
+            for (id, node) in self.nodes.iter_spine() {
+                match node {
+                    Node::Window(window) if window.is_floating() => {
+                        let activate = Some(*id) == focused_window_id;
+                        window.update_floating(space, &self.output, activate);
+                    }
+                    _ => unreachable!("Container should only have floating windows"),
+                }
+            }
+        }
+    }
+
+    fn get_child_size(&self) -> Option<Size<i32, Logical>> {
+        self.nodes
+            .tiled_element_len()
+            .map(NonZeroUsize::get)
+            .map(|len| {
+                if len == 1 {
+                    self.size
+                } else {
+                    let len = len as i32;
+                    let gaps = CONFIG.gaps as i32;
+                    let total_gaps = gaps * (len - 1);
+                    match self.layout {
+                        ContainerLayout::Vertical => {
+                            let w = self.size.w;
+                            let h = (self.size.h - total_gaps) / len;
+                            (w, h)
+                        }
+                        ContainerLayout::Horizontal => {
+                            let w = (self.size.w - total_gaps) / len;
+                            let h = self.size.h;
+                            (w, h)
+                        }
+                    }
+                    .into()
+                }
+            })
+    }
+
+    fn get_loc_for_index(&self, idx: usize, size: Size<i32, Logical>) -> Point<i32, Logical> {
+        if idx == 0 {
+            self.location
+        } else {
+            let gaps = CONFIG.gaps as i32;
+            let pos = idx as i32;
+
+            match self.layout {
+                ContainerLayout::Vertical => {
+                    let x = self.location.x;
+                    let y = self.location.y + (size.h + gaps) * pos;
+                    (x, y)
+                }
+                ContainerLayout::Horizontal => {
+                    let x = self.location.x + (size.w + gaps) * pos;
+                    let y = self.location.y;
+                    (x, y)
+                }
+            }
+            .into()
         }
     }
 
@@ -267,22 +325,5 @@ impl Container {
         }
 
         self.nodes.extend(orphans);
-    }
-
-    pub fn flatten_window(&self) -> Vec<WindowWrap> {
-        let mut windows: Vec<WindowWrap> = self.nodes.iter_windows().cloned().collect();
-
-        for child in self.nodes.iter_containers() {
-            let child = child.get();
-            windows.extend(child.flatten_window())
-        }
-
-        windows
-    }
-
-    pub(crate) fn set_focus(&mut self, window_id: u32) {
-        if self.nodes.get(&window_id).is_some() {
-            self.nodes.set_focus(window_id)
-        }
     }
 }

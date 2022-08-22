@@ -1,17 +1,16 @@
 use crate::backend::BackendHandler;
 use crate::{BackendState, CallLoopData, Wazemmes, WorkspaceRef};
+use smithay::wayland::dmabuf::DmabufState;
 
 impl BackendHandler for CallLoopData {
     type WaylandState = Wazemmes;
 
-    fn backend_state(&mut self) -> &mut BackendState {
-        &mut self.state.backend
+    fn dmabuf_state(&mut self) -> &mut DmabufState {
+        &mut self.state.dmabuf_state
     }
 
-    fn send_frames(&mut self) {
-        self.state
-            .space
-            .send_frames(self.state.start_time.elapsed().as_millis() as u32);
+    fn backend_state(&mut self) -> &mut BackendState {
+        &mut self.state.backend
     }
 
     fn start_compositor(&mut self) {

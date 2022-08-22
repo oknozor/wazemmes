@@ -91,10 +91,8 @@ pub trait BackendHandler: OutputHandler + InputHandler {
         + DmabufHandler
         + 'static;
 
+    fn dmabuf_state(&mut self) -> &mut DmabufState;
     fn backend_state(&mut self) -> &mut BackendState;
-
-    fn send_frames(&mut self);
-
     fn start_compositor(&mut self);
     fn close_compositor(&mut self);
 }
@@ -120,6 +118,8 @@ pub trait OutputHandler {
         age: usize,
         pointer_image: Option<&Gles2Texture>,
     ) -> Result<Option<Vec<Rectangle<i32, Physical>>>, smithay::backend::SwapBuffersError>;
+
+    fn send_frames(&mut self, output_id: &OutputId);
 }
 
 #[derive(Debug)]
@@ -173,7 +173,8 @@ pub fn init<D>(
             } else {
                 info!("Starting with udev backend");
                 #[cfg(feature = "udev")]
-                drm::run_udev(event_loop, handler).expect("Failed to initialize tty backend.");
+                drm::run_udev(event_loop, display, handler)
+                    .expect("Failed to initialize tty backend.");
             }
         }
         PreferedBackend::X11 => {
@@ -187,7 +188,7 @@ pub fn init<D>(
         }
         PreferedBackend::Udev => {
             #[cfg(feature = "udev")]
-            drm::run_udev(event_loop, handler).expect("Failed to initialize tty backend.");
+            drm::run_udev(event_loop, display, handler).expect("Failed to initialize tty backend.");
         }
     }
 }

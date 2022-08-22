@@ -21,6 +21,10 @@ pub type GlMultiRenderer<'a> =
     MultiRenderer<'a, 'a, EglGlesBackend, EglGlesBackend, Gles2Renderbuffer>;
 pub type GlMultiFrame = MultiFrame<EglGlesBackend, EglGlesBackend>;
 
+pub const FLOATING_Z_INDEX: u8 = 101;
+pub const TILING_Z_INDEX: u8 = 100;
+pub const CURSOR_Z_INDEX: u8 = 255;
+
 smithay::custom_elements! {
     pub CustomElem<=Gles2Renderer>;
     Quad=QuadElement,
@@ -128,7 +132,7 @@ pub fn draw_cursor(
     SurfaceTree {
         surface,
         position,
-        z_index: 100,
+        z_index: CURSOR_Z_INDEX,
     }
 }
 
@@ -139,6 +143,6 @@ pub fn draw_dnd_icon(surface: wl_surface::WlSurface, position: Point<i32, Logica
     SurfaceTree {
         surface,
         position,
-        z_index: 100,
+        z_index: CURSOR_Z_INDEX,
     }
 }

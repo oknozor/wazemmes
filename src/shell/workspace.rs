@@ -3,7 +3,7 @@ use crate::shell::container::{Container, ContainerLayout, ContainerRef};
 use crate::shell::node;
 use crate::shell::nodemap::NodeMap;
 use crate::shell::window::WindowWrap;
-use slog_scope::warn;
+use slog_scope::{debug, warn};
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Rectangle};
@@ -51,12 +51,11 @@ pub struct Workspace {
 impl Workspace {
     pub fn new(output: &Output, geometry: Rectangle<i32, Logical>) -> Workspace {
         let gaps = CONFIG.gaps as i32;
+
         let root = Container {
             id: node::id::get(),
-            x: geometry.loc.x + gaps,
-            y: geometry.loc.y + gaps,
-            width: geometry.size.w - (2 * gaps),
-            height: geometry.size.h - (2 * gaps),
+            location: (geometry.loc.x + gaps, geometry.loc.y + gaps).into(),
+            size: (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into(),
             output: output.clone(),
             parent: None,
             nodes: NodeMap::default(),
@@ -139,6 +138,7 @@ impl Workspace {
     pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
         let root = self.root();
         let mut root = root.get_mut();
+        debug!("Redraw root container from `Workspace::map_all`");
         root.redraw(space);
         space.refresh(dh);
     }
