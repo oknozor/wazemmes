@@ -1,6 +1,5 @@
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::delegate_dmabuf;
-use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::dmabuf::{DmabufGlobal, DmabufHandler, DmabufState, ImportError};
 
 use crate::{CallLoopData, Wazemmes};

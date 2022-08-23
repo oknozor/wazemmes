@@ -1,5 +1,4 @@
 use smithay::delegate_xdg_decoration;
-use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::wayland::shell::xdg::decoration::{XdgDecorationHandler};
 use smithay::wayland::shell::xdg::ToplevelSurface;
 use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;

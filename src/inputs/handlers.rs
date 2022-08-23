@@ -20,8 +20,13 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
 impl CallLoopData {
-    pub fn run(cmd: String) {
+    pub fn run<'a>(cmd: String, env: impl IntoIterator<Item=(&'a str , &'a str)>) {
         let mut command = Command::new(cmd);
+
+        for (var, value) in env {
+            command.env(var, value);
+        };
+
         command.stdin(Stdio::null());
         command.stdout(Stdio::null());
         command.stderr(Stdio::null());

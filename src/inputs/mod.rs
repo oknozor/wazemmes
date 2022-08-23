@@ -19,9 +19,9 @@ pub(crate) mod grabs;
 mod handlers;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum KeyAction {
+pub enum KeyAction<'a> {
     MoveFocus(Direction),
-    Run(String),
+    Run(String, Vec<(&'a str, &'a str)>),
     MoveToWorkspace(u8),
     LayoutVertical,
     LayoutHorizontal,
@@ -114,7 +114,7 @@ impl CallLoopData {
         };
 
         match action {
-            KeyAction::Run(cmd) => Self::run(cmd),
+            KeyAction::Run(cmd, env) => Self::run(cmd, env),
             KeyAction::Close => self.close(display),
             KeyAction::LayoutVertical => self.set_layout_v(),
             KeyAction::LayoutHorizontal => self.set_layout_h(),
@@ -168,7 +168,10 @@ impl CallLoopData {
                 } else if modifiers.alt && state == KeyState::Pressed {
                     match keysyms {
                         [xkb::KEY_t] => {
-                            FilterResult::Intercept(KeyAction::Run("alacritty".to_string()))
+                            FilterResult::Intercept(KeyAction::Run("alacritty".to_string(), vec![]))
+                        }
+                        [xkb::KEY_g] => {
+                            FilterResult::Intercept(KeyAction::Run("onagre".to_string(), vec![("WGPU_BACKEND", "vulkan")]))
                         }
                         [xkb::KEY_q] => FilterResult::Intercept(KeyAction::Close),
                         [xkb::KEY_d] => FilterResult::Intercept(KeyAction::LayoutHorizontal),

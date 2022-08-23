@@ -4,20 +4,21 @@
 - [x] move focus
 - [x] gaps
 - [ ] decoration
+  - [x] borders
+  - [ ] window title
 - [x] floating window
 - [ ] fullscreen_window
-- [x] border 
-    - [x] focused
-    - [ ] all
 - [ ] stack layout
 - [ ] configuration
-- [ ] sigterm on close ? 
-- [ ] app id/class etc
+  - [ ] keybindings 
+  - [ ] criterias
 - [ ] ipc server
 - [ ] backend 
-  - [ ] udev
+  - [x] udev
   - [x] winit
-  - [x] x11
+  - [ ] x11
   - [ ] xwayland
-  - [ ] vulkan
+- [ ] multi monitor
+- [ ] screenshot
+- [ ] xdg-desktop-portal
 - [ ] play Elden Ring

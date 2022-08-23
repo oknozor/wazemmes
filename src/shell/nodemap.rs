@@ -119,17 +119,12 @@ impl NodeMap {
     }
 
     pub fn insert(&mut self, id: u32, node: Node) {
-        let new_focus = if let Some(focus) = self.focus_idx {
-            focus + 1
-        } else {
-            0
-        };
+        self.spine.push(id);
 
         if !node.is_container() {
-            self.focus_idx = Some(new_focus);
+            self.focus_idx = Some(self.spine.len() - 1);
         }
 
-        self.spine.insert(new_focus, id);
         self.items.insert(id, node);
     }
 

@@ -5,7 +5,7 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::reexports::wayland_server::Resource;
 use smithay::wayland::seat::{PointerGrabStartData, Seat};
 use smithay::wayland::shell::xdg::{
     Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
@@ -48,7 +48,7 @@ impl XdgShellHandler for Wazemmes {
         }
     }
 
-    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
         // TODO: unimplemented
     }
 
@@ -72,7 +72,7 @@ impl XdgShellHandler for Wazemmes {
         }
     }
 
-    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+    fn grab(&mut self, _surface: PopupSurface, _seat: wl_seat::WlSeat, _serial: Serial) {
         // TODO: unimplemented
     }
 
