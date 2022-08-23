@@ -6,7 +6,7 @@ use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_to
 use crate::Wazemmes;
 
 impl XdgDecorationHandler for Wazemmes {
-    fn new_decoration(&mut self, _dh: &DisplayHandle, toplevel: ToplevelSurface) {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
         toplevel.with_pending_state(|state| {
             state.decoration_mode = Some(Mode::ServerSide);
         });
@@ -14,11 +14,11 @@ impl XdgDecorationHandler for Wazemmes {
         toplevel.send_configure();
     }
 
-    fn request_mode(&mut self, _dh: &DisplayHandle, _toplevel: ToplevelSurface, _mode: Mode) {
+    fn request_mode(&mut self, _toplevel: ToplevelSurface, _mode: Mode) {
         // Unused
     }
 
-    fn unset_mode(&mut self, _dh: &DisplayHandle, _toplevel: ToplevelSurface) {
+    fn unset_mode(&mut self, _toplevel: ToplevelSurface) {
         // Unused
     }
 }

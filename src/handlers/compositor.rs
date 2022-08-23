@@ -74,10 +74,10 @@ impl CompositorHandler for Wazemmes {
         &mut self.compositor_state
     }
 
-    fn commit(&mut self, dh: &DisplayHandle, surface: &WlSurface) {
+    fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler(surface);
         self.space.commit(surface);
-        ensure_initial_configure(dh, surface, &mut self.space);
+        ensure_initial_configure(&self.display, surface, &mut self.space);
     }
 }
 

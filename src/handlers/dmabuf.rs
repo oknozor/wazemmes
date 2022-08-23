@@ -12,11 +12,10 @@ impl DmabufHandler for Wazemmes {
 
     fn dmabuf_imported(
         &mut self,
-        dh: &DisplayHandle,
         global: &DmabufGlobal,
         dmabuf: Dmabuf,
     ) -> Result<(), ImportError> {
-        self.backend.dmabuf_imported(dh, global, dmabuf)
+        self.backend.dmabuf_imported(&self.display, global, dmabuf)
     }
 }
 

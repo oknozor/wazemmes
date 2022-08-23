@@ -4,8 +4,8 @@ use crate::state::seat::SeatState;
 use crate::{CallLoopData, Wazemmes};
 use slog_scope::{debug, info};
 use smithay::backend::input::{
-    Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent, PointerMotionAbsoluteEvent,
-    PointerMotionEvent,
+    AbsolutePositionEvent, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
+    PointerMotionAbsoluteEvent, PointerMotionEvent,
 };
 use smithay::backend::session::auto::AutoSession;
 use smithay::backend::session::Session;

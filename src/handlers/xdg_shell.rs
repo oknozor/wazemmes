@@ -20,7 +20,7 @@ impl XdgShellHandler for Wazemmes {
         &mut self.xdg_shell_state
     }
 
-    fn new_toplevel(&mut self, dh: &DisplayHandle, surface: ToplevelSurface) {
+    fn new_toplevel(&mut self, surface: ToplevelSurface) {
         let workspace = self.get_current_workspace();
         let mut workspace = workspace.get_mut();
 
@@ -44,30 +44,16 @@ impl XdgShellHandler for Wazemmes {
                 .expect("Should have a keyboard seat");
 
             let serial = SERIAL_COUNTER.next_serial();
-            handle.set_focus(dh, Some(surface.wl_surface()), serial);
+            handle.set_focus(&self.display, Some(surface.wl_surface()), serial);
         }
     }
 
-    fn new_popup(
-        &mut self,
-        _dh: &DisplayHandle,
-        _surface: PopupSurface,
-        _positioner: PositionerState,
-    ) {
-    }
-
-    fn move_request(
-        &mut self,
-        _dh: &DisplayHandle,
-        _surface: ToplevelSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
-    ) {
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        // TODO: unimplemented
     }
 
     fn resize_request(
         &mut self,
-        _dh: &DisplayHandle,
         surface: ToplevelSurface,
         seat: wl_seat::WlSeat,
         serial: Serial,
@@ -86,18 +72,12 @@ impl XdgShellHandler for Wazemmes {
         }
     }
 
-    fn grab(
-        &mut self,
-        _dh: &DisplayHandle,
-        _surface: PopupSurface,
-        _seat: wl_seat::WlSeat,
-        _serial: Serial,
-    ) {
-        // TODO popup grabs
+    fn grab(&mut self, surface: PopupSurface, seat: wl_seat::WlSeat, serial: Serial) {
+        // TODO: unimplemented
     }
 
     // FIXME: redrawing everything on each ack is a bit too much
-    fn ack_configure(&mut self, _dh: &DisplayHandle, _surface: WlSurface, _configure: Configure) {
+    fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {
         let ws = self.get_current_workspace();
         let ws = ws.get();
         let root = ws.root();
