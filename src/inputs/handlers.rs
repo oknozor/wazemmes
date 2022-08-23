@@ -130,12 +130,6 @@ impl CallLoopData {
 
         let root = workspace.root();
         let mut root = root.get_mut();
-        if !root.has_container() {
-            let output = self.state.space.outputs().next().unwrap();
-            let geo = self.state.space.output_geometry(output).unwrap();
-            root.size = geo.size;
-        }
-
         let space = &mut self.state.space;
         debug!("Redraw root container from `CallLoopData::close`");
         root.redraw(space);
