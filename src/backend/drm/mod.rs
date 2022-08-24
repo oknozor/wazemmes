@@ -224,6 +224,9 @@ where
         })
     }
 
+    #[cfg(feature = "xwayland")]
+    handler.start_xwayland();
+
     handler.start_compositor();
 
     Ok(())

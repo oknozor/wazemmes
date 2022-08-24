@@ -3,6 +3,7 @@ use crate::shell::node;
 use slog_scope::debug;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Size};
 use smithay::wayland::compositor;
 use smithay::wayland::output::Output;
@@ -89,7 +90,7 @@ impl WindowWrap {
     }
 
     pub fn xdg_surface_attributes(&self) -> XdgTopLevelAttributes {
-        compositor::with_states(self.toplevel().wl_surface(), |states| {
+        compositor::with_states(&self.wl_surface(), |states| {
             let guard = states
                 .data_map
                 .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
@@ -116,10 +117,18 @@ impl WindowWrap {
         &self.inner
     }
 
-    pub fn toplevel(&self) -> &ToplevelSurface {
+    pub fn toplevel(&self) -> Option<&ToplevelSurface> {
         match self.inner.toplevel() {
-            Kind::Xdg(toplevel) => toplevel,
-            Kind::X11(_) => unimplemented!(),
+            Kind::Xdg(toplevel) => Some(toplevel),
+            // TODO: What to do here?
+            Kind::X11(_xsurface) => None,
+        }
+    }
+
+    pub fn wl_surface(&self) -> WlSurface {
+        match self.inner.toplevel() {
+            Kind::Xdg(toplevel) => toplevel.wl_surface().clone(),
+            Kind::X11(xsurface) => xsurface.surface.clone(),
         }
     }
 
@@ -130,19 +139,23 @@ impl WindowWrap {
     {
         let toplevel = self.toplevel();
 
-        if let Some(size) = size {
+        // TODO: What about x11 here ?
+        if let (Some(size), Some(toplevel)) = (size, toplevel) {
             toplevel.with_pending_state(|state| {
                 state.states.set(xdg_toplevel::State::Resizing);
                 state.size = Some(size.into())
             });
+
+            toplevel.send_configure();
         }
 
-        toplevel.send_configure();
         space.map_window(&self.inner, location, self.z_index(), activate);
     }
 
     pub fn send_close(&self) {
-        self.toplevel().send_close()
+        if let Some(toplevel) = self.toplevel() {
+            toplevel.send_close()
+        }
     }
 
     pub fn toggle_floating(&self) {

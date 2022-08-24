@@ -20,12 +20,12 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
 impl CallLoopData {
-    pub fn run<'a>(cmd: String, env: impl IntoIterator<Item=(&'a str , &'a str)>) {
+    pub fn run<'a>(cmd: String, env: impl IntoIterator<Item = (String, String)>) {
         let mut command = Command::new(cmd);
 
         for (var, value) in env {
             command.env(var, value);
-        };
+        }
 
         command.stdin(Stdio::null());
         command.stdout(Stdio::null());
@@ -129,7 +129,7 @@ impl CallLoopData {
                     .expect("Should have a keyboard seat");
 
                 let serial = SERIAL_COUNTER.next_serial();
-                handle.set_focus(display, Some(window.toplevel().wl_surface()), serial);
+                handle.set_focus(display, Some(&window.wl_surface()), serial);
             }
         }
 
@@ -223,7 +223,7 @@ impl CallLoopData {
             .space
             .map_window(window.get(), location, window.z_index(), true);
 
-        keyboard.set_focus(dh, Some(window.toplevel().wl_surface()), serial);
+        keyboard.set_focus(dh, Some(&window.wl_surface()), serial);
         window.get().set_activated(true);
         window.get().configure();
     }

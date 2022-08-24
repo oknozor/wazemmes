@@ -1,19 +1,19 @@
 #![feature(drain_filter)]
 #![feature(hash_drain_filter)]
 
-extern crate core;
-
 use crate::backend::BackendState;
+use crate::config::WazemmesConfig;
 use crate::resources::pointer::PointerIcon;
 use crate::shell::workspace::WorkspaceRef;
 use crate::state::{CallLoopData, Wazemmes};
 use clap::Parser;
 use slog::Drain;
+use slog_scope::error;
 use smithay::desktop;
 use smithay::reexports::calloop::generic::Generic;
-use smithay::reexports::calloop::{EventLoop, Interest, Mode, PostAction};
+use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
-use smithay::reexports::wayland_server::{Display, Resource};
+use smithay::reexports::wayland_server::{Display, DisplayHandle, Resource};
 use smithay::wayland::compositor::CompositorState;
 use smithay::wayland::data_device;
 use smithay::wayland::data_device::DataDeviceState;
@@ -24,6 +24,7 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::socket::ListeningSocketSource;
+use smithay::xwayland::{XWayland, XWaylandEvent};
 use std::ffi::OsString;
 use std::sync::Arc;
 use std::time::Instant;
@@ -63,6 +64,31 @@ struct ClientState;
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
     fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+}
+
+#[cfg(feature = "xwayland")]
+fn init_xwayland_connection(
+    handle: &LoopHandle<'static, CallLoopData>,
+    display: &DisplayHandle,
+) -> XWayland {
+    let xwayland = {
+        let (xwayland, channel) = XWayland::new(slog_scope::logger(), &display);
+        let ret = handle.insert_source(channel, |event, _, data| match event {
+            XWaylandEvent::Ready {
+                connection, client, ..
+            } => data.state.xwayland_ready(connection, client),
+            XWaylandEvent::Exited => data.state.xwayland_exited(),
+        });
+        if let Err(e) = ret {
+            error!(
+                "Failed to insert the XWaylandSource into the event loop: {}",
+                e
+            );
+        }
+        xwayland
+    };
+
+    xwayland
 }
 
 fn init_wayland_listener<D>(
@@ -107,7 +133,7 @@ fn init_wayland_listener<D>(
     socket_name
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> eyre::Result<()> {
     let log = init_log();
     let _guard = slog_scope::set_global_logger(log);
 
@@ -140,6 +166,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         data_device::set_data_device_focus(&dh, seat, focus);
     })?;
 
+    #[cfg(feature = "xwayland")]
+    let xwayland = init_xwayland_connection(&event_loop.handle(), &display.handle());
+
     let state = Wazemmes {
         space: desktop::Space::new(slog_scope::logger()),
         display: display.handle(),
@@ -159,11 +188,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         backend: BackendState::default(),
         socket_name,
 
+        #[cfg(feature = "xwayland")]
+        x11_state: None,
+        #[cfg(feature = "xwayland")]
+        xwayland,
+
         // Shell
         workspaces: Default::default(),
         current_workspace: 0,
         next_layout: None,
         mod_pressed: false,
+
+        config: WazemmesConfig::get()?,
     };
 
     let mut data = CallLoopData { state, display };
@@ -174,6 +210,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut data,
         opt.backend,
     );
+
+    #[cfg(feature = "xwayland")]
+    data.state.xwayland.start(event_loop.handle())?;
 
     event_loop.run(None, &mut data, |data| {
         data.state.space.refresh(&data.display.handle());

@@ -13,6 +13,10 @@ impl BackendHandler for CallLoopData {
         &mut self.state.backend
     }
 
+    fn start_xwayland(&mut self) {
+        self.state.start_xwayland()
+    }
+
     fn start_compositor(&mut self) {
         ::std::env::set_var("WAYLAND_DISPLAY", &self.state.socket_name);
 

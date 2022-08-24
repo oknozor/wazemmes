@@ -25,6 +25,9 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use std::collections::HashMap;
 use std::ffi::OsString;
 
+use crate::backend::xwayland::X11State;
+use crate::config::WazemmesConfig;
+use smithay::xwayland::XWayland;
 use std::time::Instant;
 
 pub mod output;
@@ -49,11 +52,17 @@ pub struct Wazemmes {
     pub backend: BackendState,
     pub socket_name: OsString,
 
+    #[cfg(feature = "xwayland")]
+    pub xwayland: XWayland,
+    #[cfg(feature = "xwayland")]
+    pub x11_state: Option<X11State>,
+
     // Shell
     pub mod_pressed: bool,
     pub workspaces: HashMap<u8, WorkspaceRef>,
     pub current_workspace: u8,
     pub next_layout: Option<ContainerLayout>,
+    pub config: WazemmesConfig,
 }
 
 impl Wazemmes {

@@ -1,11 +1,12 @@
 use crate::backend::{BackendHandler, InputHandler, OutputId};
+use crate::config::keybinding::Action;
 use crate::inputs::handlers::Direction;
 use crate::state::seat::SeatState;
 use crate::{CallLoopData, Wazemmes};
 use slog_scope::{debug, info};
 use smithay::backend::input::{
     AbsolutePositionEvent, Event, InputBackend, InputEvent, KeyState, KeyboardKeyEvent,
-    PointerMotionAbsoluteEvent, PointerMotionEvent,
+    PointerMotionEvent,
 };
 use smithay::backend::session::auto::AutoSession;
 use smithay::backend::session::Session;
@@ -16,12 +17,12 @@ use smithay::wayland::seat::{keysyms as xkb, FilterResult, MotionEvent, PointerH
 use smithay::wayland::SERIAL_COUNTER;
 
 pub(crate) mod grabs;
-mod handlers;
+pub mod handlers;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum KeyAction<'a> {
+pub enum KeyAction {
     MoveFocus(Direction),
-    Run(String, Vec<(&'a str, &'a str)>),
+    Run(String, Vec<(String, String)>),
     MoveToWorkspace(u8),
     LayoutVertical,
     LayoutHorizontal,
@@ -157,56 +158,29 @@ impl CallLoopData {
                     self.state.mod_pressed = false
                 };
 
-                let keysyms = handle.modified_syms();
+                let keysym = handle.modified_sym();
 
-                if modifiers.shift && modifiers.ctrl && state == KeyState::Pressed {
-                    match keysyms {
-                        [xkb::KEY_space] => FilterResult::Intercept(KeyAction::ToggleFloating),
-                        [xkb::KEY_Q] => FilterResult::Intercept(KeyAction::Quit),
-                        _ => FilterResult::Forward,
-                    }
-                } else if modifiers.alt && state == KeyState::Pressed {
-                    match keysyms {
-                        [xkb::KEY_t] => {
-                            FilterResult::Intercept(KeyAction::Run("alacritty".to_string(), vec![]))
-                        }
-                        [xkb::KEY_g] => {
-                            FilterResult::Intercept(KeyAction::Run("onagre".to_string(), vec![("WGPU_BACKEND", "vulkan")]))
-                        }
-                        [xkb::KEY_q] => FilterResult::Intercept(KeyAction::Close),
-                        [xkb::KEY_d] => FilterResult::Intercept(KeyAction::LayoutHorizontal),
-                        [xkb::KEY_v] => FilterResult::Intercept(KeyAction::LayoutVertical),
-                        [xkb::KEY_ampersand] => {
-                            FilterResult::Intercept(KeyAction::MoveToWorkspace(0))
-                        }
-                        [xkb::KEY_eacute] => FilterResult::Intercept(KeyAction::MoveToWorkspace(1)),
-                        _ => FilterResult::Forward,
-                    }
-                } else if modifiers.ctrl && state == KeyState::Pressed {
-                    match keysyms {
-                        [xkb::KEY_h] => {
-                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Left))
-                        }
-                        [xkb::KEY_j] => {
-                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Down))
-                        }
-                        [xkb::KEY_k] => {
-                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Up))
-                        }
-                        [xkb::KEY_l] => {
-                            FilterResult::Intercept(KeyAction::MoveFocus(Direction::Right))
-                        }
-                        _ => FilterResult::Forward,
+                if state == KeyState::Pressed {
+                    let bindings = &self.state.config.keybindings;
+                    let action: Option<FilterResult<KeyAction>> = bindings
+                        .iter()
+                        .find_map(|binding| binding.match_action(*modifiers, keysym))
+                        .map(Action::into)
+                        .map(FilterResult::Intercept);
+
+                    match action {
+                        None => match keysym {
+                            xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12 => {
+                                FilterResult::Intercept(KeyAction::VtSwitch(
+                                    (keysym - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
+                                ))
+                            }
+                            _ => FilterResult::Forward,
+                        },
+                        Some(action) => action,
                     }
                 } else {
-                    match keysyms {
-                        [xkb::KEY_XF86Switch_VT_1..=xkb::KEY_XF86Switch_VT_12] => {
-                            FilterResult::Intercept(KeyAction::VtSwitch(
-                                (keysyms[0] - xkb::KEY_XF86Switch_VT_1 + 1) as i32,
-                            ))
-                        }
-                        _ => FilterResult::Forward,
-                    }
+                    FilterResult::Forward
                 }
             })
             .unwrap_or(KeyAction::None)
