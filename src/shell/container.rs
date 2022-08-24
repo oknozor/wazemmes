@@ -57,11 +57,11 @@ impl ContainerRef {
                 .get(id)
                 .and_then(|node| node.try_into().ok())
         }
-        .or_else(|| {
-            this.nodes
-                .iter_containers()
-                .find_map(|c| c.find_container_by_id(id))
-        })
+            .or_else(|| {
+                this.nodes
+                    .iter_containers()
+                    .find_map(|c| c.find_container_by_id(id))
+            })
     }
 }
 
@@ -108,13 +108,16 @@ impl Container {
         self.nodes.has_container()
     }
 
+    pub fn get_focus(&self) -> Option<&Node> {
+        self.nodes.get_focused()
+    }
+
     pub fn get_focused_window(&self) -> Option<WindowWrap> {
-        if let Some(focus) = self.nodes.get_focused() {
-            let window = self.nodes.get(focus);
-            window.map(|window| window.try_into().unwrap())
-        } else {
-            None
-        }
+        self.nodes.get_focused()
+            .and_then(|node| match node {
+                Node::Container(_) => { None }
+                Node::Window(window) => Some(window.clone())
+            })
     }
 
     pub fn flatten_window(&self) -> Vec<WindowWrap> {
@@ -134,26 +137,20 @@ impl Container {
         }
     }
 
-    pub fn get_focused_window_mut(&mut self) -> Option<(u32, &'_ mut WindowWrap)> {
-        let focused = self.nodes.get_focused().cloned();
-        if let Some(focus) = focused {
-            let window = self.nodes.get_mut(&focus);
-            window.map(|window| (focus, window.try_into().unwrap()))
-        } else {
-            None
+    // Push a window to the tree and update the focus
+    pub fn push_window(&mut self, surface: ToplevelSurface) -> u32 {
+        let window = Node::Window(WindowWrap::from(surface));
+        match self.get_focused_window() {
+            None => self.nodes.push(window),
+            Some(focus) => {
+                println!("INSERT {}", focus.id());
+                self.nodes.insert(focus.id(), window).expect("Should remove window")
+            }
         }
     }
 
-    // Push a window to the tree and update the focus
-    pub fn push_window(&mut self, surface: ToplevelSurface) -> u32 {
-        let window = WindowWrap::from(surface);
-        let id = window.id();
-        self.nodes.insert(id, Node::Window(window));
-        id
-    }
-
     pub fn create_child(&mut self, layout: ContainerLayout, parent: ContainerRef) -> ContainerRef {
-        if self.nodes.iter_windows().count() <= 1 {
+        if self.nodes.spine.len() <= 1 {
             self.layout = layout;
             parent
         } else {
@@ -161,13 +158,13 @@ impl Container {
                 ContainerLayout::Vertical => (self.size.w, self.size.h / 2),
                 ContainerLayout::Horizontal => (self.size.w / 2, self.size.h),
             }
-            .into();
+                .into();
 
             let location = match self.layout {
                 ContainerLayout::Vertical => (self.location.x, self.location.y + self.size.h),
                 ContainerLayout::Horizontal => (self.location.x + self.size.w, self.location.y),
             }
-            .into();
+                .into();
 
             let mut child = Container {
                 id: node::id::next(),
@@ -179,19 +176,17 @@ impl Container {
                 layout,
             };
 
-            let id = self.get_focused_window().map(|window| window.id());
-
-            if let Some(id) = id {
-                let window = self.nodes.remove(&id);
-                if let Some(window) = window {
-                    child.nodes.insert(id, window);
-                }
+            let child_ref = ContainerRef::new(child);
+            if let Some(focus) = self.get_focused_window() {
+                let focus_id = focus.id();
+                self.nodes.insert(focus_id, Node::Container(child_ref.clone()));
+                let focus = self.nodes.remove(&focus_id).expect("Focused window node should exists");
+                child_ref.get_mut().nodes.push(focus);
+            } else {
+                self.nodes.push(Node::Container(child_ref.clone()));
             }
 
-            let id = child.id;
-            let child = ContainerRef::new(child);
-            self.nodes.insert(id, Node::Container(child.clone()));
-            child
+            child_ref
         }
     }
 
@@ -285,7 +280,7 @@ impl Container {
                             (w, h)
                         }
                     }
-                    .into()
+                        .into()
                 }
             })
     }
@@ -309,7 +304,7 @@ impl Container {
                     (x, y)
                 }
             }
-            .into()
+                .into()
         }
     }
 

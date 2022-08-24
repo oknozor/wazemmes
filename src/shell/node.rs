@@ -11,6 +11,13 @@ impl Node {
     pub fn is_container(&self) -> bool {
         matches!(self, Node::Container(_))
     }
+
+    pub fn id(&self) -> u32 {
+        match self {
+            Node::Container(container) => container.get().id,
+            Node::Window(w) => w.id()
+        }
+    }
 }
 
 impl TryInto<WindowWrap> for Node {

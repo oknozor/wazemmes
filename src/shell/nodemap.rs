@@ -2,6 +2,8 @@ use smithay::utils::IsAlive;
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
+use std::ops::Index;
+use x11rb::protocol::shape::Op;
 
 use crate::shell::container::ContainerRef;
 use crate::shell::node::Node;
@@ -17,22 +19,31 @@ pub struct NodeMap {
     pub focus_idx: Option<usize>,
 }
 
+impl Index<usize> for NodeMap {
+    type Output = Node;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        let id = self.spine[index];
+        self.items.get(&id).expect("Unreachable error")
+    }
+}
+
 impl NodeMap {
-    pub fn iter_spine(&self) -> impl Iterator<Item = (&u32, &Node)> {
+    pub fn iter_spine(&self) -> impl Iterator<Item=(&u32, &Node)> {
         self.spine.iter().map(|id| {
             let node = self.items.get(id).unwrap();
             (id, node)
         })
     }
 
-    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWrap> {
+    pub fn iter_windows(&self) -> impl Iterator<Item=&WindowWrap> {
         self.items.values().filter_map(|node| match node {
             Node::Container(_) => None,
             Node::Window(w) => Some(w),
         })
     }
 
-    pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
+    pub fn iter_containers(&self) -> impl Iterator<Item=&ContainerRef> {
         self.items.values().filter_map(|node| match node {
             Node::Container(c) => Some(c),
             Node::Window(_) => None,
@@ -89,6 +100,17 @@ impl NodeMap {
             drained.push((*id, node))
         }
 
+        for node in &mut self.items.values() {
+            match node {
+                Node::Container(c) => {
+                    let mut ref_mut = c.get_mut();
+                    drained.extend(ref_mut.nodes.drain_all());
+                }
+                Node::Window(_) => {}
+            }
+
+        }
+
         drained
     }
 
@@ -118,7 +140,9 @@ impl NodeMap {
         self.items.get_mut(id)
     }
 
-    pub fn insert(&mut self, id: u32, node: Node) {
+    /// Insert a container or a window in the tree and return its id
+    pub fn push(&mut self, node: Node) -> u32 {
+        let id = node.id();
         self.spine.push(id);
 
         if !node.is_container() {
@@ -126,6 +150,28 @@ impl NodeMap {
         }
 
         self.items.insert(id, node);
+        id
+    }
+
+    /// Insert a container or a window after the given node id in the spine
+    pub fn insert(&mut self, id: u32, node: Node) -> Option<u32> {
+        let focus_index = self.spine
+            .iter()
+            .enumerate()
+            .find(|(idx, node_id)| **node_id == id);
+
+        if let Some((idx, node_id)) = focus_index {
+            self.spine.insert(idx + 1, node.id());
+
+            if !node.is_container() {
+                self.focus_idx = Some(self.spine.len() - 1);
+            }
+
+            self.items.insert(node.id(), node);
+            Some(id)
+        } else {
+            None
+        }
     }
 
     pub fn remove(&mut self, id: &u32) -> Option<Node> {
@@ -186,7 +232,7 @@ impl NodeMap {
             .map(|(idx, _)| idx);
     }
 
-    pub fn get_focused(&self) -> Option<&u32> {
-        self.focus_idx.and_then(|idx| self.spine.get(idx))
+    pub fn get_focused(&self) -> Option<&Node> {
+        self.focus_idx.map(|idx| &self[idx])
     }
 }

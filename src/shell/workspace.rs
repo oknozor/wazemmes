@@ -88,8 +88,7 @@ impl Workspace {
 
     pub fn create_container(&mut self, layout: ContainerLayout) -> ContainerRef {
         let child = {
-            println!("get focus");
-            let (container, _window) = self.get_focus();
+            let (container, window) = self.get_focus();
             let parent = container.clone();
             let mut current = container.get_mut();
             current.create_child(layout, parent)
