@@ -3,7 +3,6 @@ use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::ops::Index;
-use x11rb::protocol::shape::Op;
 
 use crate::shell::container::ContainerRef;
 use crate::shell::node::Node;
@@ -29,21 +28,21 @@ impl Index<usize> for NodeMap {
 }
 
 impl NodeMap {
-    pub fn iter_spine(&self) -> impl Iterator<Item=(&u32, &Node)> {
+    pub fn iter_spine(&self) -> impl Iterator<Item = (&u32, &Node)> {
         self.spine.iter().map(|id| {
             let node = self.items.get(id).unwrap();
             (id, node)
         })
     }
 
-    pub fn iter_windows(&self) -> impl Iterator<Item=&WindowWrap> {
+    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWrap> {
         self.items.values().filter_map(|node| match node {
             Node::Container(_) => None,
             Node::Window(w) => Some(w),
         })
     }
 
-    pub fn iter_containers(&self) -> impl Iterator<Item=&ContainerRef> {
+    pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
         self.items.values().filter_map(|node| match node {
             Node::Container(c) => Some(c),
             Node::Window(_) => None,
@@ -108,7 +107,6 @@ impl NodeMap {
                 }
                 Node::Window(_) => {}
             }
-
         }
 
         drained
@@ -155,12 +153,13 @@ impl NodeMap {
 
     /// Insert a container or a window after the given node id in the spine
     pub fn insert(&mut self, id: u32, node: Node) -> Option<u32> {
-        let focus_index = self.spine
+        let focus_index = self
+            .spine
             .iter()
             .enumerate()
             .find(|(idx, node_id)| **node_id == id);
 
-        if let Some((idx, node_id)) = focus_index {
+        if let Some((idx, _)) = focus_index {
             self.spine.insert(idx + 1, node.id());
 
             if !node.is_container() {

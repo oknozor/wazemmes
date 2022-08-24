@@ -4,7 +4,7 @@ use slog_scope::debug;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::compositor;
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceRoleAttributes};
@@ -87,6 +87,10 @@ impl WindowWrap {
         };
 
         self.configure(space, size, location, activate);
+    }
+
+    pub fn toggle_fullscreen(&self, space: &mut Space, geometry: Rectangle<i32, Logical>) {
+        self.configure(space, Some(geometry.size), geometry.loc, true);
     }
 
     pub fn xdg_surface_attributes(&self) -> XdgTopLevelAttributes {

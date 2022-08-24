@@ -6,7 +6,7 @@ use crate::state::output::OutputState;
 use crate::{BackendState, CallLoopData, Wazemmes};
 use smithay::backend::renderer::gles2::{Gles2Renderer, Gles2Texture};
 use smithay::desktop::space::SurfaceTree;
-use smithay::utils::Transform;
+use smithay::utils::{Physical, Rectangle, Transform};
 use smithay::wayland::output::{Mode, Output};
 
 smithay::custom_elements! {
@@ -99,97 +99,21 @@ impl OutputHandler for CallLoopData {
 
         let ws = self.state.get_current_workspace();
         let ws = ws.get();
+        let output_geometry = ws.get_output_geometry_f64(&self.state.space);
         let (container, window) = ws.get_focus();
-        let output_geometry = self.state.space.output_geometry(&output).map(|geometry| {
-            let scale = output.current_scale().fractional_scale();
-            geometry.to_f64().to_physical_precise_up(scale)
-        });
 
-        if let (Some(output_geometry), Some(borders)) =
-            (output_geometry, container.get_borders(&self.state.space))
-        {
-            let transform = self.transform_custom_element();
+        // If we are in the tiling layer draw all borders
+        if ws.fullscreen_layer.is_none() {
+            if let Some(geometry) = output_geometry {
+                self.draw_border(container, renderer, &mut elems, geometry, RED);
 
-            renderer
-                .with_context(|_renderer, gles| {
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        output_geometry,
-                        borders.left,
-                        transform,
-                        RED,
-                    )));
-
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        output_geometry,
-                        borders.top,
-                        transform,
-                        RED,
-                    )));
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        output_geometry,
-                        borders.right,
-                        transform,
-                        RED,
-                    )));
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        output_geometry,
-                        borders.bottom,
-                        transform,
-                        RED,
-                    )));
-                })
-                .unwrap()
-        }
-
-        if let Some(window) = window {
-            let borders = window.get_borders(&self.state.space);
-
-            let output_geometry = self.state.space.output_geometry(&output).map(|geometry| {
-                let scale = output.current_scale().fractional_scale();
-                geometry.to_f64().to_physical_precise_up(scale)
-            });
-
-            if let (Some(output_geometry), Some(borders)) = (output_geometry, borders) {
-                let transform = self.transform_custom_element();
-
-                renderer
-                    .with_context(|_renderer, gles| {
-                        elems.push(CustomElem::from(QuadElement::new(
-                            gles,
-                            output_geometry,
-                            borders.left,
-                            transform,
-                            BLUE,
-                        )));
-
-                        elems.push(CustomElem::from(QuadElement::new(
-                            gles,
-                            output_geometry,
-                            borders.top,
-                            transform,
-                            BLUE,
-                        )));
-                        elems.push(CustomElem::from(QuadElement::new(
-                            gles,
-                            output_geometry,
-                            borders.right,
-                            transform,
-                            BLUE,
-                        )));
-                        elems.push(CustomElem::from(QuadElement::new(
-                            gles,
-                            output_geometry,
-                            borders.bottom,
-                            transform,
-                            BLUE,
-                        )));
-                    })
-                    .unwrap()
+                if let Some(window) = window {
+                    self.draw_border(window, renderer, &mut elems, geometry, BLUE);
+                }
             }
+        } else if let (Some(geometry), Some(window)) = (output_geometry, window) {
+            // Otherwise draw only window borders
+            self.draw_border(window, renderer, &mut elems, geometry, BLUE);
         }
 
         let output_state = OutputState::for_output(&output);
@@ -245,6 +169,53 @@ impl CallLoopData {
         match self.state.backend {
             BackendState::Drm(_) => Transform::Flipped180,
             BackendState::None => Transform::Normal,
+        }
+    }
+
+    fn draw_border<T: GetBorders>(
+        &mut self,
+        node: T,
+        renderer: &mut Gles2Renderer,
+        elems: &mut Vec<CustomElem>,
+        geometry: Rectangle<f64, Physical>,
+        color: (f32, f32, f32),
+    ) {
+        if let Some(borders) = node.get_borders(&self.state.space) {
+            let transform = self.transform_custom_element();
+
+            renderer
+                .with_context(|_renderer, gles| {
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        geometry,
+                        borders.left,
+                        transform,
+                        color,
+                    )));
+
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        geometry,
+                        borders.top,
+                        transform,
+                        color,
+                    )));
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        geometry,
+                        borders.right,
+                        transform,
+                        color,
+                    )));
+                    elems.push(CustomElem::from(QuadElement::new(
+                        gles,
+                        geometry,
+                        borders.bottom,
+                        transform,
+                        color,
+                    )));
+                })
+                .unwrap()
         }
     }
 }

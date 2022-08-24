@@ -20,7 +20,7 @@ use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
 impl CallLoopData {
-    pub fn run<'a>(cmd: String, env: impl IntoIterator<Item = (String, String)>) {
+    pub fn run(cmd: String, env: impl IntoIterator<Item = (String, String)>) {
         let mut command = Command::new(cmd);
 
         for (var, value) in env {
@@ -118,7 +118,7 @@ impl CallLoopData {
 
         // Reset focus
         let workspace = self.state.get_current_workspace();
-        let workspace = workspace.get();
+        let mut workspace = workspace.get_mut();
 
         {
             if let Some(window) = workspace.get_focus().1 {
@@ -137,7 +137,7 @@ impl CallLoopData {
         let mut root = root.get_mut();
         let space = &mut self.state.space;
         debug!("Redraw root container from `CallLoopData::close`");
-        root.redraw(space);
+        workspace.redraw(space, &display);
     }
 
     pub fn handle_pointer_button<I: InputBackend>(
@@ -264,6 +264,37 @@ impl CallLoopData {
             let space = &mut self.state.space;
             focus.0.get_mut().redraw(space);
         }
+    }
+
+    pub fn toggle_fullscreen_window(&mut self) {
+        let ws = self.state.get_current_workspace();
+        let mut ws = ws.get_mut();
+        if ws.fullscreen_layer.is_some() {
+            ws.fullscreen_layer = None
+        } else {
+            let (_c, window) = ws.get_focus();
+            if let Some(window) = window {
+                ws.fullscreen_layer = Some(Node::Window(window));
+            }
+        }
+
+        ws.redraw(&mut self.state.space, &self.state.display);
+    }
+
+    pub fn toggle_fullscreen_container(&mut self) {
+        let ws = self.state.get_current_workspace();
+        let mut ws = ws.get_mut();
+        if ws.fullscreen_layer.is_some() {
+            ws.reset_gaps(&self.state.space);
+            ws.fullscreen_layer = None
+        } else {
+            let (container, _) = ws.get_focus();
+            ws.unmap_all(&mut self.state.space);
+            container.get_mut().toggle_fullscreen(&mut self.state.space);
+            ws.fullscreen_layer = Some(Node::Container(container));
+        }
+
+        ws.redraw(&mut self.state.space, &self.state.display);
     }
 
     fn scan_window(&mut self, direction: Direction) -> Option<Window> {

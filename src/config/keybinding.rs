@@ -43,6 +43,8 @@ impl Into<seat::ModifiersState> for &KeyBinding {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Action {
     MoveFocusLeft,
+    ToggleFullScreenWindow,
+    ToggleFullScreenContainer,
     MoveFocusRight,
     MoveFocusDown,
     MoveFocusUp,
@@ -72,6 +74,8 @@ impl Into<KeyAction> for Action {
             Action::Run { command, env } => KeyAction::Run(command, env),
             Action::Close => KeyAction::Close,
             Action::Quit => KeyAction::Quit,
+            Action::ToggleFullScreenWindow => KeyAction::ToggleFullScreenWindow,
+            Action::ToggleFullScreenContainer => KeyAction::ToggleFullScreenContainer,
         }
     }
 }

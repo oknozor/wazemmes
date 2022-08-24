@@ -80,10 +80,7 @@ impl XdgShellHandler for Wazemmes {
     fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {
         let ws = self.get_current_workspace();
         let ws = ws.get();
-        let root = ws.root();
-        let mut root = root.get_mut();
-        let space = &mut self.space;
-        root.redraw(space);
+        ws.redraw(&mut self.space, &self.display);
     }
 }
 

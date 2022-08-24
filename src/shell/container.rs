@@ -57,11 +57,11 @@ impl ContainerRef {
                 .get(id)
                 .and_then(|node| node.try_into().ok())
         }
-            .or_else(|| {
-                this.nodes
-                    .iter_containers()
-                    .find_map(|c| c.find_container_by_id(id))
-            })
+        .or_else(|| {
+            this.nodes
+                .iter_containers()
+                .find_map(|c| c.find_container_by_id(id))
+        })
     }
 }
 
@@ -112,12 +112,20 @@ impl Container {
         self.nodes.get_focused()
     }
 
+    pub fn toggle_fullscreen(&mut self, space: &mut Space) {
+        let geometry = space
+            .output_geometry(&self.output)
+            .expect("No output geometry");
+        self.size = geometry.size;
+        self.location = geometry.loc;
+        self.redraw(space);
+    }
+
     pub fn get_focused_window(&self) -> Option<WindowWrap> {
-        self.nodes.get_focused()
-            .and_then(|node| match node {
-                Node::Container(_) => { None }
-                Node::Window(window) => Some(window.clone())
-            })
+        self.nodes.get_focused().and_then(|node| match node {
+            Node::Container(_) => None,
+            Node::Window(window) => Some(window.clone()),
+        })
     }
 
     pub fn flatten_window(&self) -> Vec<WindowWrap> {
@@ -144,7 +152,9 @@ impl Container {
             None => self.nodes.push(window),
             Some(focus) => {
                 println!("INSERT {}", focus.id());
-                self.nodes.insert(focus.id(), window).expect("Should remove window")
+                self.nodes
+                    .insert(focus.id(), window)
+                    .expect("Should remove window")
             }
         }
     }
@@ -158,15 +168,15 @@ impl Container {
                 ContainerLayout::Vertical => (self.size.w, self.size.h / 2),
                 ContainerLayout::Horizontal => (self.size.w / 2, self.size.h),
             }
-                .into();
+            .into();
 
             let location = match self.layout {
                 ContainerLayout::Vertical => (self.location.x, self.location.y + self.size.h),
                 ContainerLayout::Horizontal => (self.location.x + self.size.w, self.location.y),
             }
-                .into();
+            .into();
 
-            let mut child = Container {
+            let child = Container {
                 id: node::id::next(),
                 location,
                 size,
@@ -179,8 +189,12 @@ impl Container {
             let child_ref = ContainerRef::new(child);
             if let Some(focus) = self.get_focused_window() {
                 let focus_id = focus.id();
-                self.nodes.insert(focus_id, Node::Container(child_ref.clone()));
-                let focus = self.nodes.remove(&focus_id).expect("Focused window node should exists");
+                self.nodes
+                    .insert(focus_id, Node::Container(child_ref.clone()));
+                let focus = self
+                    .nodes
+                    .remove(&focus_id)
+                    .expect("Focused window node should exists");
                 child_ref.get_mut().nodes.push(focus);
             } else {
                 self.nodes.push(Node::Container(child_ref.clone()));
@@ -280,7 +294,7 @@ impl Container {
                             (w, h)
                         }
                     }
-                        .into()
+                    .into()
                 }
             })
     }
@@ -304,7 +318,7 @@ impl Container {
                     (x, y)
                 }
             }
-                .into()
+            .into()
         }
     }
 

@@ -74,7 +74,7 @@ fn init_xwayland_connection(
     display: &DisplayHandle,
 ) -> XWayland {
     let xwayland = {
-        let (xwayland, channel) = XWayland::new(slog_scope::logger(), &display);
+        let (xwayland, channel) = XWayland::new(slog_scope::logger(), display);
         let ret = handle.insert_source(channel, |event, _, data| match event {
             XWaylandEvent::Ready {
                 connection, client, ..

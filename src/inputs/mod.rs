@@ -21,6 +21,8 @@ pub mod handlers;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum KeyAction {
+    ToggleFullScreenWindow,
+    ToggleFullScreenContainer,
     MoveFocus(Direction),
     Run(String, Vec<(String, String)>),
     MoveToWorkspace(u8),
@@ -123,6 +125,8 @@ impl CallLoopData {
             KeyAction::MoveToWorkspace(num) => self.state.move_to_workspace(num, display),
             KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
             KeyAction::ToggleFloating => self.toggle_floating(),
+            KeyAction::ToggleFullScreenWindow => self.toggle_fullscreen_window(),
+            KeyAction::ToggleFullScreenContainer => self.toggle_fullscreen_container(),
             KeyAction::Quit => {
                 info!("Quitting");
                 self.close_compositor();

@@ -1,12 +1,13 @@
 use crate::config::CONFIG;
 use crate::shell::container::{Container, ContainerLayout, ContainerRef};
 use crate::shell::node;
+use crate::shell::node::Node;
 use crate::shell::nodemap::NodeMap;
 use crate::shell::window::WindowWrap;
 use slog_scope::{debug, warn};
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::utils::{Logical, Rectangle};
+use smithay::utils::{Logical, Physical, Rectangle};
 use smithay::wayland::output::Output;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
@@ -44,6 +45,7 @@ impl WorkspaceRef {
 #[derive(Debug)]
 pub struct Workspace {
     pub output: Output,
+    pub fullscreen_layer: Option<Node>,
     root: ContainerRef,
     focus: ContainerRef,
 }
@@ -69,7 +71,32 @@ impl Workspace {
             output: output.clone(),
             root,
             focus,
+            fullscreen_layer: None,
         }
+    }
+
+    pub fn redraw(&self, space: &mut Space, dh: &DisplayHandle) {
+        self.unmap_all(space);
+
+        if let Some(layer) = &self.fullscreen_layer {
+            let geometry = space.output_geometry(&self.output).expect("Geometry");
+            match layer {
+                Node::Container(container) => {
+                    let mut container = container.get_mut();
+                    container.size = geometry.size;
+                    container.location = geometry.loc;
+                    container.redraw(space);
+                }
+                Node::Window(window) => {
+                    window.toggle_fullscreen(space, geometry);
+                }
+            }
+        } else {
+            let mut root = self.root.get_mut();
+            root.redraw(space);
+        }
+
+        space.refresh(dh)
     }
 
     pub fn root(&self) -> ContainerRef {
@@ -88,7 +115,7 @@ impl Workspace {
 
     pub fn create_container(&mut self, layout: ContainerLayout) -> ContainerRef {
         let child = {
-            let (container, window) = self.get_focus();
+            let (container, _) = self.get_focus();
             let parent = container.clone();
             let mut current = container.get_mut();
             current.create_child(layout, parent)
@@ -149,5 +176,22 @@ impl Workspace {
         } else {
             self.root.find_container_by_id(id)
         }
+    }
+
+    pub fn reset_gaps(&self, space: &Space) {
+        let gaps = CONFIG.gaps as i32;
+        let geometry = space
+            .output_geometry(&self.output)
+            .expect("Output should have a geometry");
+        let mut root = self.root.get_mut();
+        root.location = (geometry.loc.x + gaps, geometry.loc.y + gaps).into();
+        root.size = (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into();
+    }
+
+    pub fn get_output_geometry_f64(&self, space: &Space) -> Option<Rectangle<f64, Physical>> {
+        space.output_geometry(&self.output).map(|geometry| {
+            let scale = self.output.current_scale().fractional_scale();
+            geometry.to_f64().to_physical_precise_up(scale)
+        })
     }
 }

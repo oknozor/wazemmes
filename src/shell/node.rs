@@ -1,5 +1,6 @@
 use crate::shell::container::ContainerRef;
 use crate::shell::window::WindowWrap;
+use smithay::desktop::Space;
 
 #[derive(Debug, Clone)]
 pub enum Node {
@@ -15,7 +16,7 @@ impl Node {
     pub fn id(&self) -> u32 {
         match self {
             Node::Container(container) => container.get().id,
-            Node::Window(w) => w.id()
+            Node::Window(w) => w.id(),
         }
     }
 }
