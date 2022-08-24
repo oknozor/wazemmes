@@ -21,6 +21,7 @@ pub mod drawing;
 pub mod drm;
 pub mod libinput;
 pub mod winit;
+#[cfg(feature = "xwayland")]
 pub mod xwayland;
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -94,6 +95,7 @@ pub trait BackendHandler: OutputHandler + InputHandler {
 
     fn dmabuf_state(&mut self) -> &mut DmabufState;
     fn backend_state(&mut self) -> &mut BackendState;
+    #[cfg(feature = "xwayland")]
     fn start_xwayland(&mut self);
     fn start_compositor(&mut self);
     fn close_compositor(&mut self);

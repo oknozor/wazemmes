@@ -8,7 +8,7 @@ use slog_scope::debug;
 use smithay::backend::input::{
     Axis, AxisSource, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
 };
-use smithay::desktop::Window;
+use smithay::desktop::{Kind, Window};
 use smithay::nix::libc;
 use smithay::reexports::wayland_server::protocol::wl_pointer;
 use smithay::reexports::wayland_server::DisplayHandle;

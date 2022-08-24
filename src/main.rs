@@ -24,10 +24,12 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
 use smithay::wayland::socket::ListeningSocketSource;
-use smithay::xwayland::{XWayland, XWaylandEvent};
 use std::ffi::OsString;
 use std::sync::Arc;
 use std::time::Instant;
+
+#[cfg(feature = "xwayland")]
+use smithay::xwayland::{XWayland, XWaylandEvent};
 
 mod backend;
 pub mod border;

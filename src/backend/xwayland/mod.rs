@@ -22,6 +22,7 @@ use x11rb::protocol::Event;
 use x11rb::rust_connection::{DefaultStream, RustConnection};
 
 impl Wazemmes {
+    #[cfg(feature = "xwayland")]
     pub fn start_xwayland(&mut self) {
         if let Err(e) = self.xwayland.start(self._loop_handle.clone()) {
             error!("Failed to start XWayland: {}", e);

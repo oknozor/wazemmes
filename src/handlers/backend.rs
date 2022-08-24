@@ -13,6 +13,7 @@ impl BackendHandler for CallLoopData {
         &mut self.state.backend
     }
 
+    #[cfg(feature = "xwayland")]
     fn start_xwayland(&mut self) {
         self.state.start_xwayland()
     }

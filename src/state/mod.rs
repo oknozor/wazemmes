@@ -25,10 +25,13 @@ use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use std::collections::HashMap;
 use std::ffi::OsString;
 
-use crate::backend::xwayland::X11State;
 use crate::config::WazemmesConfig;
-use smithay::xwayland::XWayland;
 use std::time::Instant;
+
+#[cfg(feature = "xwayland")]
+use crate::backend::xwayland::X11State;
+#[cfg(feature = "xwayland")]
+use smithay::xwayland::XWayland;
 
 pub mod output;
 pub mod seat;
