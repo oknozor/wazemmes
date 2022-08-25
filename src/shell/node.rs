@@ -1,6 +1,5 @@
 use crate::shell::container::ContainerRef;
 use crate::shell::window::WindowWrap;
-use smithay::desktop::Space;
 
 #[derive(Debug, Clone)]
 pub enum Node {

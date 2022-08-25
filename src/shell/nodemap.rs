@@ -157,13 +157,14 @@ impl NodeMap {
             .spine
             .iter()
             .enumerate()
-            .find(|(idx, node_id)| **node_id == id);
+            .find(|(_, node_id)| **node_id == id);
 
         if let Some((idx, _)) = focus_index {
-            self.spine.insert(idx + 1, node.id());
+            let index = idx + 1;
+            self.spine.insert(index, node.id());
 
             if !node.is_container() {
-                self.focus_idx = Some(self.spine.len() - 1);
+                self.focus_idx = Some(index);
             }
 
             self.items.insert(node.id(), node);

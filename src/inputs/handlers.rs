@@ -118,7 +118,7 @@ impl CallLoopData {
 
         // Reset focus
         let workspace = self.state.get_current_workspace();
-        let mut workspace = workspace.get_mut();
+        let workspace = workspace.get();
 
         {
             if let Some(window) = workspace.get_focus().1 {
@@ -133,11 +133,7 @@ impl CallLoopData {
             }
         }
 
-        let root = workspace.root();
-        let mut root = root.get_mut();
-        let space = &mut self.state.space;
-        debug!("Redraw root container from `CallLoopData::close`");
-        workspace.redraw(space, &display);
+        workspace.redraw(&mut self.state.space, display);
     }
 
     pub fn handle_pointer_button<I: InputBackend>(
