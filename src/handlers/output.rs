@@ -2,6 +2,7 @@ use crate::backend::{NewOutputDescriptor, OutputHandler, OutputId};
 use crate::border::{QuadElement, BLUE, RED};
 use crate::draw::pointer::PointerElement;
 use crate::shell::border::GetBorders;
+use crate::shell::node::Node;
 use crate::state::output::OutputState;
 use crate::{BackendState, CallLoopData, Wazemmes};
 use smithay::backend::renderer::gles2::{Gles2Renderer, Gles2Texture};
@@ -102,18 +103,12 @@ impl OutputHandler for CallLoopData {
         let output_geometry = ws.get_output_geometry_f64(&self.state.space);
         let (container, window) = ws.get_focus();
 
-        // If we are in the tiling layer draw all borders
-        if ws.fullscreen_layer.is_none() {
-            if let Some(geometry) = output_geometry {
+        if let (Some(geometry), Some(window)) = (output_geometry, window) {
+            // Draw borders only if current layer is not a window fullscreen layer
+            if !matches!(ws.fullscreen_layer, Some(Node::Window(_))) {
                 self.draw_border(container, renderer, &mut elems, geometry, RED);
-
-                if let Some(window) = window {
-                    self.draw_border(window, renderer, &mut elems, geometry, BLUE);
-                }
+                self.draw_border(window, renderer, &mut elems, geometry, BLUE);
             }
-        } else if let (Some(geometry), Some(window)) = (output_geometry, window) {
-            // Otherwise draw only window borders
-            self.draw_border(window, renderer, &mut elems, geometry, BLUE);
         }
 
         let output_state = OutputState::for_output(&output);

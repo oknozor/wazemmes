@@ -113,11 +113,13 @@ impl Container {
     }
 
     pub fn toggle_fullscreen(&mut self, space: &mut Space) {
+        let gaps = CONFIG.gaps as i32;
         let geometry = space
             .output_geometry(&self.output)
             .expect("No output geometry");
-        self.size = geometry.size;
-        self.location = geometry.loc;
+
+        self.location = (geometry.loc.x + gaps, geometry.loc.y + gaps).into();
+        self.size = (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into();
         self.redraw(space);
     }
 
@@ -150,12 +152,10 @@ impl Container {
         let window = Node::Window(WindowWrap::from(surface));
         match self.get_focused_window() {
             None => self.nodes.push(window),
-            Some(focus) => {
-                println!("INSERT {}", focus.id());
-                self.nodes
-                    .insert(focus.id(), window)
-                    .expect("Should remove window")
-            }
+            Some(focus) => self
+                .nodes
+                .insert(focus.id(), window)
+                .expect("Should remove window"),
         }
     }
 

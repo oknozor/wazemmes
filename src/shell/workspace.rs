@@ -83,8 +83,6 @@ impl Workspace {
             match layer {
                 Node::Container(container) => {
                     let mut container = container.get_mut();
-                    container.size = geometry.size;
-                    container.location = geometry.loc;
                     container.redraw(space);
                 }
                 Node::Window(window) => {
@@ -183,9 +181,9 @@ impl Workspace {
         let geometry = space
             .output_geometry(&self.output)
             .expect("Output should have a geometry");
-        let mut root = self.root.get_mut();
-        root.location = (geometry.loc.x + gaps, geometry.loc.y + gaps).into();
-        root.size = (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into();
+        let mut container = self.root.get_mut();
+        container.location = (geometry.loc.x + gaps, geometry.loc.y + gaps).into();
+        container.size = (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into();
     }
 
     pub fn get_output_geometry_f64(&self, space: &Space) -> Option<Rectangle<f64, Physical>> {
