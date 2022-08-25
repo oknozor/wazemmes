@@ -42,6 +42,14 @@ impl Into<seat::ModifiersState> for &KeyBinding {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub enum Action {
+    MoveWindowLeft,
+    MoveWindowRight,
+    MoveWindowDown,
+    MoveWindowUp,
+    MoveContainerLeft,
+    MoveContainerRight,
+    MoveContainerDown,
+    MoveContainerUp,
     MoveFocusLeft,
     ToggleFullScreenWindow,
     ToggleFullScreenContainer,
@@ -63,6 +71,14 @@ pub enum Action {
 impl Into<KeyAction> for Action {
     fn into(self) -> KeyAction {
         match self {
+            Action::MoveWindowLeft => KeyAction::MoveWindow(Direction::Left),
+            Action::MoveWindowRight => KeyAction::MoveWindow(Direction::Right),
+            Action::MoveWindowDown => KeyAction::MoveWindow(Direction::Down),
+            Action::MoveWindowUp => KeyAction::MoveWindow(Direction::Up),
+            Action::MoveContainerLeft => KeyAction::MoveContainer(Direction::Left),
+            Action::MoveContainerRight => KeyAction::MoveContainer(Direction::Right),
+            Action::MoveContainerDown => KeyAction::MoveContainer(Direction::Down),
+            Action::MoveContainerUp => KeyAction::MoveContainer(Direction::Up),
             Action::MoveFocusLeft => KeyAction::MoveFocus(Direction::Left),
             Action::MoveFocusRight => KeyAction::MoveFocus(Direction::Right),
             Action::MoveFocusDown => KeyAction::MoveFocus(Direction::Down),

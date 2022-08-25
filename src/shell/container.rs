@@ -76,7 +76,7 @@ pub struct Container {
     pub layout: ContainerLayout,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ContainerState {
     Empty,
     HasContainersOnly,
@@ -154,9 +154,21 @@ impl Container {
             None => self.nodes.push(window),
             Some(focus) => self
                 .nodes
-                .insert(focus.id(), window)
-                .expect("Should remove window"),
+                .insert_after(focus.id(), window)
+                .expect("Should insert window"),
         }
+    }
+
+    pub fn insert_window_after(&mut self, target_id: u32, window: WindowWrap) {
+        let id = window.id();
+        self.nodes.insert_after(target_id, Node::Window(window));
+        self.nodes.set_focus(id);
+    }
+
+    pub fn insert_window_before(&mut self, target_id: u32, window: WindowWrap) {
+        let id = window.id();
+        self.nodes.insert_before(target_id, Node::Window(window));
+        self.nodes.set_focus(id);
     }
 
     pub fn create_child(&mut self, layout: ContainerLayout, parent: ContainerRef) -> ContainerRef {
@@ -190,7 +202,7 @@ impl Container {
             if let Some(focus) = self.get_focused_window() {
                 let focus_id = focus.id();
                 self.nodes
-                    .insert(focus_id, Node::Container(child_ref.clone()));
+                    .insert_after(focus_id, Node::Container(child_ref.clone()));
                 let focus = self
                     .nodes
                     .remove(&focus_id)
@@ -322,7 +334,7 @@ impl Container {
         }
     }
 
-    fn reparent_orphans(&mut self) {
+    pub fn reparent_orphans(&mut self) {
         let mut orphans = vec![];
 
         for child in self.nodes.iter_containers() {

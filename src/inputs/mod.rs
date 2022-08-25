@@ -23,6 +23,8 @@ pub mod handlers;
 pub enum KeyAction {
     ToggleFullScreenWindow,
     ToggleFullScreenContainer,
+    MoveWindow(Direction),
+    MoveContainer(Direction),
     MoveFocus(Direction),
     Run(String, Vec<(String, String)>),
     MoveToWorkspace(u8),
@@ -121,9 +123,10 @@ impl CallLoopData {
             KeyAction::Close => self.close(display),
             KeyAction::LayoutVertical => self.set_layout_v(),
             KeyAction::LayoutHorizontal => self.set_layout_h(),
-            KeyAction::None => {}
             KeyAction::MoveToWorkspace(num) => self.state.move_to_workspace(num, display),
             KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
+            KeyAction::MoveWindow(direction) => self.move_window(direction, display),
+            KeyAction::MoveContainer(direction) => self.move_container(direction),
             KeyAction::ToggleFloating => self.toggle_floating(),
             KeyAction::ToggleFullScreenWindow => self.toggle_fullscreen_window(),
             KeyAction::ToggleFullScreenContainer => self.toggle_fullscreen_container(),
@@ -138,6 +141,7 @@ impl CallLoopData {
                     debug!("VtSwitch is not supported with this backend")
                 }
             }
+            KeyAction::None => {}
         }
     }
 

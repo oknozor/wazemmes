@@ -152,15 +152,29 @@ impl NodeMap {
     }
 
     /// Insert a container or a window after the given node id in the spine
-    pub fn insert(&mut self, id: u32, node: Node) -> Option<u32> {
-        let focus_index = self
-            .spine
-            .iter()
-            .enumerate()
-            .find(|(_, node_id)| **node_id == id);
+    pub fn insert_after(&mut self, id: u32, node: Node) -> Option<u32> {
+        let focus_index = self.spine_index(id);
 
-        if let Some((idx, _)) = focus_index {
-            let index = idx + 1;
+        if let Some(index) = focus_index {
+            let index = index + 1;
+            self.spine.insert(index, node.id());
+
+            if !node.is_container() {
+                self.focus_idx = Some(index);
+            }
+
+            self.items.insert(node.id(), node);
+            Some(id)
+        } else {
+            None
+        }
+    }
+
+    /// Insert a container or a window after the given node id in the spine
+    pub fn insert_before(&mut self, id: u32, node: Node) -> Option<u32> {
+        let focus_index = self.spine_index(id);
+
+        if let Some(index) = focus_index {
             self.spine.insert(index, node.id());
 
             if !node.is_container() {
@@ -234,5 +248,13 @@ impl NodeMap {
 
     pub fn get_focused(&self) -> Option<&Node> {
         self.focus_idx.map(|idx| &self[idx])
+    }
+
+    fn spine_index(&mut self, id: u32) -> Option<usize> {
+        self.spine
+            .iter()
+            .enumerate()
+            .find(|(_, node_id)| **node_id == id)
+            .map(|(idx, _)| idx)
     }
 }
