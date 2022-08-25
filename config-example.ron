@@ -1,0 +1,106 @@
+(
+    gaps: 14,
+    keybindings: [
+        (
+            modifiers: [Alt],
+            key: "t",
+            action: Run(
+                env: [],
+                command: "alacritty",
+            ),
+        ),
+        (
+            modifiers: [Alt],
+            key: "g",
+            action: Run(
+                env: [
+                    (
+                        "WGPU_BACKEND",
+                        "vulkan",
+                    ),
+                ],
+                command: "onagre",
+            ),
+        ),
+        (
+            modifiers: [Alt],
+            key: "a",
+            action: Close,
+        ),
+        (
+            modifiers: [Ctrl, Shift],
+            key: "Q",
+            action: Quit,
+        ),
+        (
+            modifiers: [Alt, Shift],
+            key: "H",
+            action: MoveWindowLeft,
+        ),
+        (
+            modifiers: [Alt, Shift],
+            key: "L",
+            action: MoveWindowRight,
+        ),
+        (
+            modifiers: [Alt, Shift],
+            key: "J",
+            action: MoveWindowDown,
+        ),
+        (
+            modifiers: [Alt, Shift],
+            key: "K",
+            action: MoveWindowUp,
+        ),
+        (
+            modifiers: [Alt],
+            key: "v",
+            action: LayoutVertical,
+        ),
+        (
+            modifiers: [Alt],
+            key: "d",
+            action: LayoutHorizontal,
+        ),
+        (
+            modifiers: [Ctrl, Shift],
+            key: "space",
+            action: ToggleFloating,
+        ),
+        (
+            modifiers: [Alt],
+            key: "k",
+            action: MoveFocusUp,
+        ),
+        (
+            modifiers: [Alt],
+            key: "h",
+            action: MoveFocusLeft,
+        ),
+        (
+            modifiers: [Alt],
+            key: "l",
+            action: MoveFocusRight,
+        ),
+        (
+            modifiers: [Alt],
+            key: "j",
+            action: MoveFocusDown,
+        ),
+        (
+            modifiers: [Alt],
+            key: "k",
+            action: MoveFocusUp,
+        ),
+        (
+            modifiers: [Alt],
+            key: "f",
+            action: ToggleFullScreenWindow,
+        ),
+        (
+            modifiers: [Alt, Shift],
+            key: "F",
+            action: ToggleFullScreenContainer,
+        )
+    ],
+)
