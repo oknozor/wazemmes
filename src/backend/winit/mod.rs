@@ -41,7 +41,7 @@ where
     let physical_properties = PhysicalProperties {
         size: (0, 0).into(),
         subpixel: wl_output::Subpixel::Unknown,
-        make: "Smithay".into(),
+        make: "Wazemmes".into(),
         model: "Winit".into(),
     };
 

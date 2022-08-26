@@ -10,6 +10,7 @@ use clap::Parser;
 use slog::Drain;
 use slog_scope::error;
 use smithay::desktop;
+use smithay::desktop::PopupManager;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
@@ -173,6 +174,7 @@ fn main() -> eyre::Result<()> {
 
     let state = Wazemmes {
         space: desktop::Space::new(slog_scope::logger()),
+        popups: PopupManager::new(slog_scope::logger()),
         display: display.handle(),
         start_time: Instant::now(),
         loop_signal: event_loop.get_signal(),
@@ -218,6 +220,7 @@ fn main() -> eyre::Result<()> {
 
     event_loop.run(None, &mut data, |data| {
         data.state.space.refresh(&data.display.handle());
+        data.state.popups.cleanup();
         data.display.flush_clients().unwrap();
     })?;
 

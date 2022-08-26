@@ -1,9 +1,11 @@
 use crate::backend::drawing::{FLOATING_Z_INDEX, TILING_Z_INDEX};
+use crate::backend::xwayland::X11State;
 use crate::shell::node;
 use slog_scope::debug;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::compositor;
 use smithay::wayland::output::Output;
@@ -75,7 +77,13 @@ pub struct XdgTopLevelAttributes {
 }
 
 impl WindowWrap {
-    pub fn update_floating(&self, space: &mut Space, output: &Output, activate: bool) {
+    pub fn update_floating(
+        &self,
+        space: &mut Space,
+        x11_state: &mut X11State,
+        output: &Output,
+        activate: bool,
+    ) {
         let (size, location) = if self.get_state().configured() {
             let output_geometry = space.output_geometry(output).unwrap();
             let initial_size = self.get_state().initial_size();
@@ -86,11 +94,16 @@ impl WindowWrap {
             (None, (0, 0).into())
         };
 
-        self.configure(space, size, location, activate);
+        self.configure(space, Some(x11_state), size, location, activate);
     }
 
-    pub fn toggle_fullscreen(&self, space: &mut Space, geometry: Rectangle<i32, Logical>) {
-        self.configure(space, Some(geometry.size), geometry.loc, true);
+    pub fn toggle_fullscreen(
+        &self,
+        space: &mut Space,
+        x11_state: Option<&mut X11State>,
+        geometry: Rectangle<i32, Logical>,
+    ) {
+        self.configure(space, x11_state, Some(geometry.size), geometry.loc, true);
     }
 
     pub fn xdg_surface_attributes(&self) -> XdgTopLevelAttributes {
@@ -136,27 +149,43 @@ impl WindowWrap {
         }
     }
 
-    pub fn configure<S, P>(&self, space: &mut Space, size: Option<S>, location: P, activate: bool)
-    where
+    pub fn configure<S, P>(
+        &self,
+        space: &mut Space,
+        x11_state: Option<&mut X11State>,
+        size: Option<S>,
+        location: P,
+        activate: bool,
+    ) where
         S: Into<Size<i32, Logical>>,
         P: Into<Point<i32, Logical>>,
     {
-        let toplevel = self.toplevel();
+        match self.inner.toplevel() {
+            Kind::Xdg(toplevel) => {
+                if let Some(size) = size {
+                    toplevel.with_pending_state(|state| {
+                        state.states.set(xdg_toplevel::State::Resizing);
+                        state.size = Some(size.into());
+                    });
 
-        // TODO: What about x11 here ?
-        if let (Some(size), Some(toplevel)) = (size, toplevel) {
-            toplevel.with_pending_state(|state| {
-                state.states.set(xdg_toplevel::State::Resizing);
-                state.size = Some(size.into())
-            });
-
-            toplevel.send_configure();
+                    toplevel.send_configure();
+                };
+            }
+            Kind::X11(x11surface) => {
+                let state = x11_state.unwrap();
+                let id = x11surface.surface.id().protocol_id();
+                state.send_configure(id, size)
+            }
         }
 
         space.map_window(&self.inner, location, self.z_index(), activate);
     }
 
-    pub fn send_close(&self) {
+    pub fn send_close(&self, x11_state: Option<&mut X11State>) {
+        match self.inner.toplevel() {
+            Kind::Xdg(toplevel) => toplevel.send_close(),
+            Kind::X11(_x11surface) => x11_state.unwrap().send_close(self.id()),
+        }
         if let Some(toplevel) = self.toplevel() {
             toplevel.send_close()
         }
@@ -202,6 +231,14 @@ impl From<ToplevelSurface> for WindowWrap {
 
 impl From<Window> for WindowWrap {
     fn from(window: Window) -> Self {
+        WindowWrap { inner: window }
+    }
+}
+
+impl WindowWrap {
+    pub fn from_x11_window(window: Window) -> WindowWrap {
+        window.user_data().insert_if_missing(WindowState::new);
+
         WindowWrap { inner: window }
     }
 }

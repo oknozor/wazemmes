@@ -4,11 +4,11 @@ use crate::shell::node::Node;
 use crate::shell::window::{WindowState, WindowWrap};
 use crate::state::CallLoopData;
 
-use slog_scope::debug;
+use slog_scope::{debug, warn};
 use smithay::backend::input::{
     Axis, AxisSource, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
 };
-use smithay::desktop::Window;
+use smithay::desktop::{Kind, Window};
 use smithay::nix::libc;
 use smithay::reexports::wayland_server::protocol::wl_pointer;
 use smithay::reexports::wayland_server::DisplayHandle;
@@ -57,7 +57,7 @@ impl CallLoopData {
 
             let mut container = container.get_mut();
             debug!("Closing window in container: {}", container.id);
-            container.close_window();
+            container.close_window(self.state.x11_state.as_mut());
             container.state()
         };
 
@@ -134,7 +134,11 @@ impl CallLoopData {
             }
         }
 
-        workspace.redraw(&mut self.state.space, display);
+        workspace.redraw(
+            &mut self.state.space,
+            display,
+            self.state.x11_state.as_mut(),
+        );
     }
 
     pub fn handle_pointer_button<I: InputBackend>(
@@ -195,7 +199,12 @@ impl CallLoopData {
                 } else {
                     self.state.space.windows().for_each(|window| {
                         window.set_activated(false);
-                        window.configure();
+                        match window.toplevel() {
+                            Kind::Xdg(_) => window.configure(),
+                            Kind::X11(_) => {
+                                warn!("Skip window configure for X11 surface")
+                            }
+                        }
                     });
 
                     let keyboard = self.state.seat.get_keyboard().unwrap();
@@ -210,7 +219,10 @@ impl CallLoopData {
 
         self.state.space.windows().for_each(|window| {
             window.set_activated(false);
-            window.configure();
+            match window.toplevel() {
+                Kind::Xdg(_) => window.configure(),
+                Kind::X11(_) => warn!("Skip window configure for X11 surface"),
+            }
         });
 
         let window = WindowWrap::from(window.clone());
@@ -221,8 +233,15 @@ impl CallLoopData {
             .map_window(window.get(), location, window.z_index(), true);
 
         keyboard.set_focus(dh, Some(&window.wl_surface()), serial);
-        window.get().set_activated(true);
-        window.get().configure();
+
+        let window = window.get();
+        window.set_activated(true);
+        match window.toplevel() {
+            Kind::Xdg(_) => window.configure(),
+            Kind::X11(_) => {
+                // cnoop
+            }
+        }
     }
 
     pub fn set_layout_h(&mut self) {
@@ -326,10 +345,12 @@ impl CallLoopData {
 
         let ws = self.state.get_current_workspace();
         let ws = ws.get();
-        ws.redraw(&mut self.state.space, dh);
+        ws.redraw(&mut self.state.space, dh, self.state.x11_state.as_mut());
     }
 
-    pub fn move_container(&self, direction: Direction) {}
+    pub fn move_container(&self, _direction: Direction) {
+        todo!("move container not implemented")
+    }
 
     pub fn toggle_floating(&mut self) {
         let ws = self.state.get_current_workspace();
@@ -339,7 +360,8 @@ impl CallLoopData {
         if let Some(window) = focus.1 {
             window.toggle_floating();
             let space = &mut self.state.space;
-            focus.0.get_mut().redraw(space);
+            let x11_state = self.state.x11_state.as_mut();
+            focus.0.get_mut().redraw(space, x11_state);
         }
     }
 
@@ -355,7 +377,11 @@ impl CallLoopData {
             }
         }
 
-        ws.redraw(&mut self.state.space, &self.state.display);
+        ws.redraw(
+            &mut self.state.space,
+            &self.state.display,
+            self.state.x11_state.as_mut(),
+        );
     }
 
     pub fn toggle_fullscreen_container(&mut self) {
@@ -367,11 +393,17 @@ impl CallLoopData {
         } else {
             let (container, _) = ws.get_focus();
             ws.unmap_all(&mut self.state.space);
-            container.get_mut().toggle_fullscreen(&mut self.state.space);
+            container
+                .get_mut()
+                .toggle_fullscreen(&mut self.state.space, self.state.x11_state.as_mut());
             ws.fullscreen_layer = Some(Node::Container(container));
         }
 
-        ws.redraw(&mut self.state.space, &self.state.display);
+        ws.redraw(
+            &mut self.state.space,
+            &self.state.display,
+            self.state.x11_state.as_mut(),
+        );
     }
 
     fn scan_window(&mut self, direction: Direction) -> Option<Window> {

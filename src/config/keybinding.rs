@@ -254,7 +254,5 @@ mod test {
         };
 
         let result = ron::to_string(&config).unwrap();
-        println!("{:#}", result);
-        println!("{:?}", ron::from_str::<WazemmesConfig>(&result).unwrap());
     }
 }

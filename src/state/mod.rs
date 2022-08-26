@@ -1,7 +1,7 @@
 use crate::shell::container::ContainerLayout;
 use crate::shell::workspace::WorkspaceRef;
 
-use smithay::desktop::WindowSurfaceType;
+use smithay::desktop::{PopupManager, WindowSurfaceType};
 
 use smithay::reexports::calloop::{LoopHandle, LoopSignal};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
@@ -38,6 +38,7 @@ pub mod seat;
 
 pub struct Wazemmes {
     pub space: desktop::Space,
+    pub popups: PopupManager,
     pub display: DisplayHandle,
     pub start_time: Instant,
     pub loop_signal: LoopSignal,

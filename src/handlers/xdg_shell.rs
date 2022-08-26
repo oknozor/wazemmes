@@ -1,5 +1,6 @@
-use slog_scope::debug;
+use slog_scope::{debug, warn};
 use smithay::delegate_xdg_shell;
+use smithay::desktop::PopupKind;
 
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 
@@ -34,7 +35,7 @@ impl XdgShellHandler for Wazemmes {
 
             {
                 let mut container = container.get_mut();
-                container.push_window(surface.clone());
+                container.push_toplevel(surface.clone());
             }
 
             // Grab keyboard focus
@@ -48,8 +49,22 @@ impl XdgShellHandler for Wazemmes {
         }
     }
 
-    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
-        // TODO: unimplemented
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        // Do not send a configure here, the initial configure
+        // of a xdg_surface has to be sent during the commit if
+        // the surface is not already configured
+
+        // TODO: properly recompute the geometry with the whole of positioner state
+        surface.with_pending_state(|state| {
+            // NOTE: This is not really necessary as the default geometry
+            // is already set the same way, but for demonstrating how
+            // to set the initial popup geometry this code is left as
+            // an example
+            state.geometry = positioner.get_geometry();
+        });
+        if let Err(err) = self.popups.track_popup(PopupKind::from(surface)) {
+            warn!("Failed to track popup: {}", err);
+        }
     }
 
     fn resize_request(
@@ -80,7 +95,7 @@ impl XdgShellHandler for Wazemmes {
     fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {
         let ws = self.get_current_workspace();
         let ws = ws.get();
-        ws.redraw(&mut self.space, &self.display);
+        ws.redraw(&mut self.space, &self.display, self.x11_state.as_mut());
     }
 }
 

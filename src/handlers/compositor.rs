@@ -1,8 +1,11 @@
 use crate::shell::window::WindowWrap;
 use crate::Wazemmes;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
-use smithay::desktop::{layer_map_for_output, Kind as SurfaceKind, Space, WindowSurfaceType};
+use smithay::desktop::{
+    layer_map_for_output, Kind as SurfaceKind, PopupKind, PopupManager, Space, WindowSurfaceType,
+};
 
+use crate::backend::xwayland;
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::DisplayHandle;
@@ -12,7 +15,9 @@ use smithay::wayland::compositor::{
     with_states, with_surface_tree_upward, CompositorHandler, CompositorState, TraversalAction,
 };
 use smithay::wayland::shell::wlr_layer::LayerSurfaceAttributes;
-use smithay::wayland::shell::xdg::XdgToplevelSurfaceRoleAttributes;
+use smithay::wayland::shell::xdg::{
+    XdgPopupSurfaceRoleAttributes, XdgToplevelSurfaceRoleAttributes,
+};
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::Serial;
 use smithay::{delegate_compositor, delegate_shm};
@@ -76,12 +81,27 @@ impl CompositorHandler for Wazemmes {
 
     fn commit(&mut self, surface: &WlSurface) {
         on_commit_buffer_handler(surface);
+        #[cfg(feature = "xwayland")]
+        {
+            let ws = self.get_current_workspace();
+            if let Some(x11) = self.x11_state.as_mut() {
+                xwayland::commit_hook(surface, &self.display, x11, ws);
+            }
+        }
+
         self.space.commit(surface);
-        ensure_initial_configure(&self.display, surface, &mut self.space);
+        self.popups.commit(surface);
+
+        ensure_initial_configure(&self.display, surface, &mut self.space, &mut self.popups);
     }
 }
 
-fn ensure_initial_configure(dh: &DisplayHandle, surface: &WlSurface, space: &mut Space) {
+fn ensure_initial_configure(
+    dh: &DisplayHandle,
+    surface: &WlSurface,
+    space: &mut Space,
+    popups: &mut PopupManager,
+) {
     with_surface_tree_upward(
         surface,
         (),
@@ -160,6 +180,26 @@ fn ensure_initial_configure(dh: &DisplayHandle, surface: &WlSurface, space: &mut
 
         return;
     }
+
+    if let Some(popup) = popups.find_popup(surface) {
+        let PopupKind::Xdg(ref popup) = popup;
+        let initial_configure_sent = with_states(surface, |states| {
+            states
+                .data_map
+                .get::<Mutex<XdgPopupSurfaceRoleAttributes>>()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .initial_configure_sent
+        });
+        if !initial_configure_sent {
+            // NOTE: This should never fail as the initial configure is always
+            // allowed.
+            popup.send_configure().expect("initial configure failed");
+        }
+
+        return;
+    };
 
     if let Some(output) = space.outputs().find(|o| {
         let map = layer_map_for_output(o);

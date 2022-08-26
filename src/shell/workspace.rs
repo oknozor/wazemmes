@@ -1,3 +1,4 @@
+use crate::backend::xwayland::X11State;
 use crate::config::CONFIG;
 use crate::shell::container::{Container, ContainerLayout, ContainerRef};
 use crate::shell::node;
@@ -75,7 +76,7 @@ impl Workspace {
         }
     }
 
-    pub fn redraw(&self, space: &mut Space, dh: &DisplayHandle) {
+    pub fn redraw(&self, space: &mut Space, dh: &DisplayHandle, x11_state: Option<&mut X11State>) {
         self.unmap_all(space);
 
         if let Some(layer) = &self.fullscreen_layer {
@@ -83,15 +84,15 @@ impl Workspace {
             match layer {
                 Node::Container(container) => {
                     let mut container = container.get_mut();
-                    container.redraw(space);
+                    container.redraw(space, x11_state);
                 }
                 Node::Window(window) => {
-                    window.toggle_fullscreen(space, geometry);
+                    window.toggle_fullscreen(space, x11_state, geometry);
                 }
             }
         } else {
             let mut root = self.root.get_mut();
-            root.redraw(space);
+            root.redraw(space, x11_state);
         }
 
         space.refresh(dh)
@@ -160,11 +161,11 @@ impl Workspace {
         }
     }
 
-    pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle) {
+    pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle, x11_state: Option<&mut X11State>) {
         let root = self.root();
         let mut root = root.get_mut();
         debug!("Redraw root container from `Workspace::map_all`");
-        root.redraw(space);
+        root.redraw(space, x11_state);
         space.refresh(dh);
     }
 

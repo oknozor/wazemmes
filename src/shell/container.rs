@@ -2,9 +2,10 @@ use std::cell::{Ref, RefCell, RefMut};
 use std::num::NonZeroUsize;
 use std::rc::Rc;
 
-use smithay::desktop::Space;
+use smithay::desktop::{Space, Window};
 use smithay::utils::{Logical, Point, Size};
 
+use crate::backend::xwayland::X11State;
 use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
@@ -112,7 +113,7 @@ impl Container {
         self.nodes.get_focused()
     }
 
-    pub fn toggle_fullscreen(&mut self, space: &mut Space) {
+    pub fn toggle_fullscreen(&mut self, space: &mut Space, x11_state: Option<&mut X11State>) {
         let gaps = CONFIG.gaps as i32;
         let geometry = space
             .output_geometry(&self.output)
@@ -120,7 +121,7 @@ impl Container {
 
         self.location = (geometry.loc.x + gaps, geometry.loc.y + gaps).into();
         self.size = (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into();
-        self.redraw(space);
+        self.redraw(space, x11_state);
     }
 
     pub fn get_focused_window(&self) -> Option<WindowWrap> {
@@ -148,8 +149,20 @@ impl Container {
     }
 
     // Push a window to the tree and update the focus
-    pub fn push_window(&mut self, surface: ToplevelSurface) -> u32 {
+    pub fn push_toplevel(&mut self, surface: ToplevelSurface) -> u32 {
         let window = Node::Window(WindowWrap::from(surface));
+        match self.get_focused_window() {
+            None => self.nodes.push(window),
+            Some(focus) => self
+                .nodes
+                .insert_after(focus.id(), window)
+                .expect("Should insert window"),
+        }
+    }
+
+    #[cfg(feature = "xwayland")]
+    pub fn push_xwindow(&mut self, window: Window) -> u32 {
+        let window = Node::Window(WindowWrap::from_x11_window(window));
         match self.get_focused_window() {
             None => self.nodes.push(window),
             Some(focus) => self
@@ -216,9 +229,9 @@ impl Container {
         }
     }
 
-    pub fn close_window(&mut self) {
+    pub fn close_window(&mut self, x11_state: Option<&mut X11State>) {
         let idx = self.get_focused_window().map(|window| {
-            window.send_close();
+            window.send_close(x11_state);
             window.id()
         });
 
@@ -229,8 +242,11 @@ impl Container {
 
     // Fully redraw a container, its window an children containers
     // Call this on the root of the tree to refresh a workspace
-    pub fn redraw(&mut self, space: &mut Space) {
+    pub fn redraw(&mut self, space: &mut Space, x11_state: Option<&mut X11State>) {
         // Ensure dead widow get remove before updating the container
+        #[cfg(feature = "xwayland")]
+        let x11_state = x11_state.unwrap();
+
         self.nodes.remove_dead_windows();
 
         // Don't draw anything if the container is empty
@@ -252,19 +268,19 @@ impl Container {
                         let mut child = container.get_mut();
                         child.location = self.get_loc_for_index(tiling_index, size);
                         child.size = size;
-                        child.redraw(space);
+                        child.redraw(space, Some(x11_state));
                         tiling_index += 1;
                     }
 
                     Node::Window(window) if window.is_floating() => {
                         let activate = Some(*id) == focused_window_id;
-                        window.update_floating(space, &self.output, activate);
+                        window.update_floating(space, x11_state, &self.output, activate);
                     }
 
                     Node::Window(window) => {
                         let activate = Some(*id) == focused_window_id;
                         let loc = self.get_loc_for_index(tiling_index, size);
-                        window.configure(space, Some(size), loc, activate);
+                        window.configure(space, Some(x11_state), Some(size), loc, activate);
                         tiling_index += 1;
                     }
                 }
@@ -275,7 +291,7 @@ impl Container {
                 match node {
                     Node::Window(window) if window.is_floating() => {
                         let activate = Some(*id) == focused_window_id;
-                        window.update_floating(space, &self.output, activate);
+                        window.update_floating(space, x11_state, &self.output, activate);
                     }
                     _ => unreachable!("Container should only have floating windows"),
                 }
