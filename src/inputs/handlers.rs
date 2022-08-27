@@ -12,7 +12,6 @@ use smithay::backend::input::{
 use smithay::desktop::{Kind, Window};
 use smithay::input::pointer::{AxisFrame, ButtonEvent, Focus};
 use smithay::nix::libc;
-use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Point, Serial, SERIAL_COUNTER};
 use std::io;
 use std::os::unix::process::CommandExt;
@@ -50,7 +49,7 @@ impl CallLoopData {
         command.spawn().unwrap().wait().unwrap();
     }
 
-    pub fn close(&mut self, display: &DisplayHandle) {
+    pub fn close(&mut self) {
         let state = {
             let container = self.state.get_current_workspace().get_mut().get_focus().0;
 
@@ -118,7 +117,7 @@ impl CallLoopData {
 
         // Reset focus
         let workspace = self.state.get_current_workspace();
-        let workspace = workspace.get();
+        let mut workspace = workspace.get_mut();
 
         {
             if let Some(window) = workspace.get_focus().1 {
@@ -133,11 +132,7 @@ impl CallLoopData {
             }
         }
 
-        workspace.redraw(
-            &mut self.state.space,
-            display,
-            self.state.x11_state.as_mut(),
-        );
+        workspace.update_layout(&self.state.space);
     }
 
     pub fn handle_pointer_button<I: InputBackend>(
@@ -147,20 +142,21 @@ impl CallLoopData {
         let pointer = self.state.seat.get_pointer().unwrap();
         let serial = SERIAL_COUNTER.next_serial();
         let button = event.button_code();
-        let button_state = ButtonState::from(event.state());
+        let state = event.state();
+        let time = event.time();
 
         pointer.button(
             &mut self.state,
             &ButtonEvent {
                 button,
-                state: button_state,
+                state,
                 serial,
-                time: event.time(),
+                time,
             },
         );
 
         if let Some(MouseButton::Left) = event.button() {
-            if ButtonState::Pressed == button_state {
+            if ButtonState::Pressed == state {
                 if let Some(window) = self
                     .state
                     .space
@@ -267,7 +263,7 @@ impl CallLoopData {
         }
     }
 
-    pub fn move_window(&mut self, direction: Direction, dh: &DisplayHandle) {
+    pub fn move_window(&mut self, direction: Direction) {
         // TODO: this should be simplified !
         let new_focus = {
             let ws = self.state.get_current_workspace();
@@ -341,8 +337,8 @@ impl CallLoopData {
         }
 
         let ws = self.state.get_current_workspace();
-        let ws = ws.get();
-        ws.redraw(&mut self.state.space, dh, self.state.x11_state.as_mut());
+        let mut ws = ws.get_mut();
+        ws.update_layout(&self.state.space);
     }
 
     pub fn move_container(&self, _direction: Direction) {
@@ -356,9 +352,8 @@ impl CallLoopData {
 
         if let Some(window) = focus.1 {
             window.toggle_floating();
-            let space = &mut self.state.space;
-            let x11_state = self.state.x11_state.as_mut();
-            focus.0.get_mut().redraw(space, x11_state);
+            let output_geometry = self.state.space.output_geometry(&ws.output).unwrap();
+            focus.0.get_mut().update_layout(output_geometry);
         }
     }
 
@@ -374,11 +369,7 @@ impl CallLoopData {
             }
         }
 
-        ws.redraw(
-            &mut self.state.space,
-            &self.state.display,
-            self.state.x11_state.as_mut(),
-        );
+        ws.update_layout(&self.state.space);
     }
 
     pub fn toggle_fullscreen_container(&mut self) {
@@ -390,17 +381,10 @@ impl CallLoopData {
         } else {
             let (container, _) = ws.get_focus();
             ws.unmap_all(&mut self.state.space);
-            container
-                .get_mut()
-                .toggle_fullscreen(&mut self.state.space, self.state.x11_state.as_mut());
+            let output_geometry = self.state.space.output_geometry(&ws.output).unwrap();
+            container.get_mut().toggle_fullscreen(output_geometry);
             ws.fullscreen_layer = Some(Node::Container(container));
         }
-
-        ws.redraw(
-            &mut self.state.space,
-            &self.state.display,
-            self.state.x11_state.as_mut(),
-        );
     }
 
     fn scan_window(&mut self, direction: Direction) -> Option<Window> {

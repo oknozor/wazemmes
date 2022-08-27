@@ -81,7 +81,7 @@ pub struct X11State {
     unpaired_surfaces: HashMap<u32, (X11Window, Point<i32, Logical>)>,
     id_map: HashMap<u32, u32>,
     root: x11rb::protocol::xproto::Window,
-    pub needs_update: bool,
+    pub needs_redraw: bool,
 }
 
 impl X11State {
@@ -137,7 +137,7 @@ impl X11State {
             unpaired_surfaces: Default::default(),
             id_map: Default::default(),
             root,
-            needs_update: false,
+            needs_redraw: false,
         };
 
         Ok((
@@ -158,7 +158,7 @@ impl X11State {
         ws: WorkspaceRef,
     ) -> Result<(), ReplyOrIdError> {
         debug!("X11: Got event {:?}", event);
-        self.needs_update = false;
+        self.needs_redraw = false;
 
         match event {
             Event::ConfigureRequest(r) => {
@@ -207,11 +207,13 @@ impl X11State {
                         stack_mode: Some(StackMode::ABOVE),
                     };
                     self.conn.configure_window(*id, &aux)?;
-                    self.needs_update = true;
+                    self.conn.flush()?;
+                    self.needs_redraw = true;
                 } else if msg.type_ == self.atoms._NET_CLOSE_WINDOW {
                     // TODO: how do we correctly terminate the process here ?
                     self.conn.destroy_window(msg.window)?;
                     self.conn.flush()?;
+                    self.needs_redraw = true;
 
                     let window_ids = self
                         .id_map
@@ -222,8 +224,6 @@ impl X11State {
                     if let Some((wl_id, _x_id)) = window_ids {
                         self.id_map.remove(&wl_id);
                     };
-
-                    self.needs_update = true;
                 } else if msg.type_ == self.atoms.WL_SURFACE_ID {
                     // We get a WL_SURFACE_ID message when Xwayland creates a WlSurface for a
                     // window. Both the creation of the surface and this client message happen at
@@ -257,7 +257,7 @@ impl X11State {
                                 "X11 surface {:x?} corresponds to WlSurface {:x} = {:?}",
                                 msg.window, id, surface,
                             );
-                            self.new_window(msg.window, surface, ws.clone());
+                            self.new_window(msg.window, surface, ws);
                         }
                     }
                 }
@@ -271,12 +271,11 @@ impl X11State {
 
     fn new_window(&mut self, xwindow: X11Window, surface: WlSurface, ws: WorkspaceRef) {
         debug!("Matched X11 surface {:x?} to {:x?}", xwindow, surface);
+
         if give_role(&surface, "x11_surface").is_err() {
-            // It makes no sense to post a protocol error here since that would only kill Xwayland
             error!("Surface {:x?} already has a role?!", surface);
             return;
         }
-
         let protocol_id = surface.id().protocol_id();
         let x11surface = X11Surface { surface };
         let ws = ws.get();
@@ -285,6 +284,7 @@ impl X11State {
         let window = WindowWrap::from_x11_window(Window::new(Kind::X11(x11surface)));
         self.id_map.insert(protocol_id, xwindow);
         container.push_xwindow(window);
+        self.needs_redraw = true;
     }
 
     pub fn send_configure<S>(&self, id: u32, size: Option<S>)

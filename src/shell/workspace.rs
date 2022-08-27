@@ -5,7 +5,7 @@ use crate::shell::node;
 use crate::shell::node::Node;
 use crate::shell::nodemap::NodeMap;
 use crate::shell::window::WindowWrap;
-use slog_scope::{debug, warn};
+use slog_scope::warn;
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Physical, Rectangle};
@@ -49,6 +49,7 @@ pub struct Workspace {
     pub fullscreen_layer: Option<Node>,
     root: ContainerRef,
     focus: ContainerRef,
+    pub(crate) needs_redraw: bool,
 }
 
 impl Workspace {
@@ -73,28 +74,38 @@ impl Workspace {
             root,
             focus,
             fullscreen_layer: None,
+            needs_redraw: false,
         }
+    }
+
+    pub fn update_layout(&mut self, space: &Space) {
+        let geometry = space.output_geometry(&self.output).unwrap();
+        let root = &self.root;
+        let mut root = root.get_mut();
+        self.needs_redraw = root.update_layout(geometry);
     }
 
     pub fn redraw(&self, space: &mut Space, dh: &DisplayHandle, x11_state: Option<&mut X11State>) {
         self.unmap_all(space);
+        let geometry = space.output_geometry(&self.output).expect("Geometry");
 
         if let Some(layer) = &self.fullscreen_layer {
-            let geometry = space.output_geometry(&self.output).expect("Geometry");
             match layer {
                 Node::Container(container) => {
                     let mut container = container.get_mut();
-                    container.redraw(space, x11_state);
+                    container.update_layout(geometry);
                 }
                 Node::Window(window) => {
-                    window.toggle_fullscreen(space, x11_state, geometry);
+                    window.toggle_fullscreen(geometry);
                 }
             }
         } else {
             let mut root = self.root.get_mut();
-            root.redraw(space, x11_state);
+            root.update_layout(geometry);
         }
 
+        let root = self.root.get();
+        root.redraw(space, x11_state);
         space.refresh(dh)
     }
 
@@ -159,14 +170,6 @@ impl Workspace {
         for window in self.flatten_window() {
             space.unmap_window(window.get());
         }
-    }
-
-    pub fn map_all(&self, space: &mut Space, dh: &DisplayHandle, x11_state: Option<&mut X11State>) {
-        let root = self.root();
-        let mut root = root.get_mut();
-        debug!("Redraw root container from `Workspace::map_all`");
-        root.redraw(space, x11_state);
-        space.refresh(dh);
     }
 
     pub fn find_container_by_id(&self, id: &u32) -> Option<ContainerRef> {

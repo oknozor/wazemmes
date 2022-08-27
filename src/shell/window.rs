@@ -8,7 +8,6 @@ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::compositor;
-use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceRoleAttributes};
 use std::cell::RefCell;
 use std::sync::Mutex;
@@ -19,6 +18,9 @@ pub struct WindowState {
     floating: RefCell<bool>,
     configured: RefCell<bool>,
     initial_size: RefCell<Size<i32, Logical>>,
+    size: RefCell<Size<i32, Logical>>,
+    loc: RefCell<Point<i32, Logical>>,
+    needs_redraw: RefCell<bool>,
 }
 
 impl WindowState {
@@ -28,6 +30,9 @@ impl WindowState {
             floating: RefCell::new(false),
             configured: RefCell::new(false),
             initial_size: RefCell::new(Default::default()),
+            size: RefCell::new(Default::default()),
+            loc: RefCell::new(Default::default()),
+            needs_redraw: RefCell::new(false),
         }
     }
 
@@ -77,15 +82,8 @@ pub struct XdgTopLevelAttributes {
 }
 
 impl WindowWrap {
-    pub fn update_floating(
-        &self,
-        space: &mut Space,
-        x11_state: &mut X11State,
-        output: &Output,
-        activate: bool,
-    ) {
+    pub fn update_floating(&self, output_geometry: Rectangle<i32, Logical>) -> bool {
         let (size, location) = if self.get_state().configured() {
-            let output_geometry = space.output_geometry(output).unwrap();
             let initial_size = self.get_state().initial_size();
             let size = initial_size;
             let location = self.center(output_geometry.size);
@@ -94,16 +92,11 @@ impl WindowWrap {
             (None, (0, 0).into())
         };
 
-        self.configure(space, Some(x11_state), size, location, activate);
+        self.update_loc_and_size(size, location)
     }
 
-    pub fn toggle_fullscreen(
-        &self,
-        space: &mut Space,
-        x11_state: Option<&mut X11State>,
-        geometry: Rectangle<i32, Logical>,
-    ) {
-        self.configure(space, x11_state, Some(geometry.size), geometry.loc, true);
+    pub fn toggle_fullscreen(&self, geometry: Rectangle<i32, Logical>) {
+        self.update_loc_and_size(Some(geometry.size), geometry.loc);
     }
 
     pub fn xdg_surface_attributes(&self) -> XdgTopLevelAttributes {
@@ -153,36 +146,61 @@ impl WindowWrap {
         }
     }
 
-    pub fn configure<S, P>(
-        &self,
-        space: &mut Space,
-        x11_state: Option<&mut X11State>,
-        size: Option<S>,
-        location: P,
-        activate: bool,
-    ) where
-        S: Into<Size<i32, Logical>>,
-        P: Into<Point<i32, Logical>>,
-    {
+    pub fn map(&self, space: &mut Space, x11_state: Option<&mut X11State>, activate: bool) {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => {
-                if let Some(size) = size {
-                    toplevel.with_pending_state(|state| {
-                        state.states.set(xdg_toplevel::State::Resizing);
-                        state.size = Some(size.into());
-                    });
+                toplevel.with_pending_state(|state| {
+                    state.states.set(xdg_toplevel::State::Resizing);
+                    state.size = Some(self.size());
+                });
 
-                    toplevel.send_configure();
-                };
+                toplevel.send_configure();
             }
+
             Kind::X11(x11surface) => {
                 let state = x11_state.unwrap();
                 let id = x11surface.surface.id().protocol_id();
-                state.send_configure(id, size)
+                state.send_configure(id, Some(self.size()))
             }
         }
 
-        space.map_window(&self.inner, location, self.z_index(), activate);
+        space.map_window(&self.inner, self.loc(), self.z_index(), activate);
+    }
+
+    pub fn update_loc_and_size<S, P>(&self, size: Option<S>, location: P) -> bool
+    where
+        S: Into<Size<i32, Logical>>,
+        P: Into<Point<i32, Logical>>,
+    {
+        let state = self.get_state();
+        let new_location = location.into();
+
+        let loc_changed = if *state.loc.borrow() != new_location {
+            state.loc.replace(new_location);
+            true
+        } else {
+            false
+        };
+
+        let size_changed = if let Some(new_size) = size {
+            let new_size = new_size.into();
+            if *state.size.borrow() != new_size {
+                state.size.replace(new_size);
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if loc_changed || size_changed {
+            state.needs_redraw.replace(true);
+            true
+        } else {
+            state.needs_redraw.replace(false);
+            false
+        }
     }
 
     pub fn send_close(&self, x11_state: Option<&mut X11State>) {
@@ -218,6 +236,18 @@ impl WindowWrap {
         let x = center_x - window_center_x;
         let y = center_y - window_center_y;
         Point::from((x, y))
+    }
+
+    pub fn size(&self) -> Size<i32, Logical> {
+        *self.get_state().size.borrow()
+    }
+
+    pub fn loc(&self) -> Point<i32, Logical> {
+        *self.get_state().loc.borrow()
+    }
+
+    pub fn needs_redraw(&self) -> bool {
+        *self.get_state().needs_redraw.borrow()
     }
 }
 

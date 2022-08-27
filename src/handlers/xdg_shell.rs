@@ -96,8 +96,8 @@ impl XdgShellHandler for Wazemmes {
     // FIXME: redrawing everything on each ack is a bit too much
     fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {
         let ws = self.get_current_workspace();
-        let ws = ws.get();
-        ws.redraw(&mut self.space, &self.display, self.x11_state.as_mut());
+        let mut ws = ws.get_mut();
+        ws.update_layout(&self.space)
     }
 }
 

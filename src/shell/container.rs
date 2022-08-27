@@ -4,7 +4,7 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 
 use smithay::desktop::Space;
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::{Logical, Point, Rectangle, Size};
 
 use crate::backend::xwayland::X11State;
 use smithay::wayland::output::Output;
@@ -114,15 +114,15 @@ impl Container {
         self.nodes.get_focused()
     }
 
-    pub fn toggle_fullscreen(&mut self, space: &mut Space, x11_state: Option<&mut X11State>) {
+    pub fn toggle_fullscreen(&mut self, output_geometry: Rectangle<i32, Logical>) {
         let gaps = CONFIG.gaps as i32;
-        let geometry = space
-            .output_geometry(&self.output)
-            .expect("No output geometry");
-
-        self.location = (geometry.loc.x + gaps, geometry.loc.y + gaps).into();
-        self.size = (geometry.size.w - 2 * gaps, geometry.size.h - 2 * gaps).into();
-        self.redraw(space, x11_state);
+        self.location = (output_geometry.loc.x + gaps, output_geometry.loc.y + gaps).into();
+        self.size = (
+            output_geometry.size.w - 2 * gaps,
+            output_geometry.size.h - 2 * gaps,
+        )
+            .into();
+        self.update_layout(output_geometry);
     }
 
     pub fn get_focused_window(&self) -> Option<WindowWrap> {
@@ -243,87 +243,83 @@ impl Container {
         }
     }
 
-    // TODO: Change this to a data structure holding the layout of the window only
-    //      so we dont need to hold Space and X11State
-    //      if anything gets mutated actually redraw the needed surfaces
-    //      in the main loop
-
-    // Fully redraw a container, its window an children containers
-    // Call this on the root of the tree to refresh a workspace
-    pub fn redraw(&mut self, space: &mut Space, x11_state: Option<&mut X11State>) {
-        // Ensure dead widow get remove before updating the container
-        #[cfg(feature = "xwayland")]
+    pub fn redraw(&self, space: &mut Space, x11_state: Option<&mut X11State>) {
         let x11_state = x11_state.unwrap();
+        let focused_window_id = self.get_focused_window().map(|window| window.id());
 
+        for (id, node) in self.nodes.iter_spine() {
+            match node {
+                Node::Container(container) => {
+                    let child = container.get();
+                    child.redraw(space, Some(x11_state));
+                }
+                Node::Window(window) => {
+                    let activate = Some(*id) == focused_window_id;
+                    window.map(space, Some(x11_state), activate)
+                }
+            }
+        }
+    }
+
+    pub fn update_layout(&mut self, output_geometry: Rectangle<i32, Logical>) -> bool {
+        // Ensure dead widow get remove before updating the container
         self.nodes.remove_dead_windows();
 
         // Don't draw anything if the container is empty
         if self.nodes.spine.is_empty() {
-            return;
+            return false;
         }
 
         // reparent sub children having containers only
         self.reparent_orphans();
 
+        let mut redraw = false;
+
         // Initial geometry
-        let focused_window_id = self.get_focused_window().map(|window| window.id());
         if let Some(size) = self.get_child_size() {
             // Draw everything
             let mut tiling_index = 0;
-            for (id, node) in self.nodes.iter_spine() {
+
+            for (_, node) in self.nodes.iter_spine() {
                 match node {
                     Node::Container(container) => {
                         let mut child = container.get_mut();
                         child.location = self.get_loc_for_index(tiling_index, size);
                         child.size = size;
-                        child.redraw(space, Some(x11_state));
+                        if child.update_layout(output_geometry) {
+                            redraw = true
+                        };
                         tiling_index += 1;
                     }
 
                     Node::Window(window) if window.is_floating() => {
-                        let activate = Some(*id) == focused_window_id;
-                        window.update_floating(space, x11_state, &self.output, activate);
+                        window.update_floating(output_geometry);
                     }
 
                     Node::Window(window) => {
-                        let activate = Some(*id) == focused_window_id;
                         let loc = self.get_loc_for_index(tiling_index, size);
-                        match space.window_bbox(window.get()) {
-                            Some(current_geometry) => {
-                                // Redraw only if something has changed
-                                if current_geometry.size != size || current_geometry.loc != loc {
-                                    window.configure(
-                                        space,
-                                        Some(x11_state),
-                                        Some(size),
-                                        loc,
-                                        activate,
-                                    );
-                                } else {
-                                    debug!("Geometry did not change for window({})", window.id());
-                                }
-                            }
-                            None => {
-                                window.configure(space, Some(x11_state), Some(size), loc, activate);
-                            }
+                        if window.update_loc_and_size(Some(size), loc) {
+                            redraw = true;
                         }
-
                         tiling_index += 1;
                     }
                 }
             }
         } else {
             // Draw floating elements only
-            for (id, node) in self.nodes.iter_spine() {
+            for (_, node) in self.nodes.iter_spine() {
                 match node {
                     Node::Window(window) if window.is_floating() => {
-                        let activate = Some(*id) == focused_window_id;
-                        window.update_floating(space, x11_state, &self.output, activate);
+                        if window.update_floating(output_geometry) {
+                            redraw = true
+                        }
                     }
                     _ => unreachable!("Container should only have floating windows"),
                 }
             }
         }
+
+        redraw
     }
 
     fn get_child_size(&self) -> Option<Size<i32, Logical>> {

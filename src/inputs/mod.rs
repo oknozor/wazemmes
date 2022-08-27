@@ -15,7 +15,7 @@ use smithay::input::keyboard::{keysyms as xkb, FilterResult};
 use smithay::input::pointer::{CursorImageStatus, MotionEvent, PointerHandle};
 use smithay::input::{Seat, SeatHandler};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
-use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 use smithay::wayland::data_device::set_data_device_focus;
 use smithay::wayland::primary_selection::{
@@ -59,9 +59,7 @@ impl InputHandler for CallLoopData {
             .cloned();
 
         match event {
-            InputEvent::Keyboard { event, .. } => {
-                self.process_shortcut::<I>(&self.display.handle(), event, session)
-            }
+            InputEvent::Keyboard { event, .. } => self.process_shortcut::<I>(event, session),
             InputEvent::PointerMotion { event } => {
                 let pointer = self.state.seat.get_pointer().unwrap();
                 let seat_state = SeatState::for_seat(&self.state.seat);
@@ -114,7 +112,6 @@ impl InputHandler for CallLoopData {
 impl CallLoopData {
     fn process_shortcut<I: InputBackend>(
         &mut self,
-        display: &DisplayHandle,
         event: <I as InputBackend>::KeyboardKeyEvent,
         session: Option<&mut AutoSession>,
     ) {
@@ -125,12 +122,12 @@ impl CallLoopData {
 
         match action {
             KeyAction::Run(cmd, env) => Self::run_command(cmd, env),
-            KeyAction::Close => self.close(display),
+            KeyAction::Close => self.close(),
             KeyAction::LayoutVertical => self.set_layout_v(),
             KeyAction::LayoutHorizontal => self.set_layout_h(),
-            KeyAction::MoveToWorkspace(num) => self.state.move_to_workspace(num, display),
+            KeyAction::MoveToWorkspace(num) => self.state.move_to_workspace(num),
             KeyAction::MoveFocus(direction) => self.move_focus(direction),
-            KeyAction::MoveWindow(direction) => self.move_window(direction, display),
+            KeyAction::MoveWindow(direction) => self.move_window(direction),
             KeyAction::MoveContainer(direction) => self.move_container(direction),
             KeyAction::ToggleFloating => self.toggle_floating(),
             KeyAction::ToggleFullScreenWindow => self.toggle_fullscreen_window(),

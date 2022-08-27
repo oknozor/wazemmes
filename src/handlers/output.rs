@@ -96,7 +96,7 @@ impl OutputHandler for CallLoopData {
             .clone();
 
         let ws = self.state.get_current_workspace();
-        let ws = ws.get();
+        let mut ws = ws.get_mut();
         let output_geometry = ws.get_output_geometry_f64(&self.state.space);
         let (container, window) = ws.get_focus();
 
@@ -106,6 +106,27 @@ impl OutputHandler for CallLoopData {
                 self.draw_border(container, renderer, &mut elems, geometry, RED);
                 self.draw_border(window, renderer, &mut elems, geometry, BLUE);
             }
+        }
+
+        let x11_update = self
+            .state
+            .x11_state
+            .as_ref()
+            .map(|state| state.needs_redraw)
+            .unwrap_or(false);
+
+        if x11_update {
+            println!("X11 update");
+            ws.update_layout(&self.state.space);
+        }
+
+        if ws.needs_redraw {
+            println!("Redraw");
+            ws.redraw(
+                &mut self.state.space,
+                &self.state.display,
+                self.state.x11_state.as_mut(),
+            );
         }
 
         let output_state = OutputState::for_output(&output);

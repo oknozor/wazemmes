@@ -1,5 +1,3 @@
-use smithay::reexports::wayland_server::DisplayHandle;
-
 use crate::shell::workspace::WorkspaceRef;
 use crate::Wazemmes;
 
@@ -19,7 +17,7 @@ impl Wazemmes {
             .clone()
     }
 
-    pub fn move_to_workspace(&mut self, num: u8, dh: &DisplayHandle) {
+    pub fn move_to_workspace(&mut self, num: u8) {
         // Target workspace is already focused
         if self.current_workspace == num {
             return;
@@ -36,13 +34,7 @@ impl Wazemmes {
                 let workspace = WorkspaceRef::new(output.clone(), &self.space);
                 self.workspaces.insert(num, workspace);
             }
-            Some(workspace) => {
-                workspace
-                    .get_mut()
-                    .redraw(&mut self.space, &self.display, self.x11_state.as_mut())
-            }
+            Some(workspace) => workspace.get_mut().update_layout(&self.space),
         };
-
-        self.space.refresh(dh);
     }
 }
