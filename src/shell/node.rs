@@ -26,8 +26,8 @@ impl TryInto<WindowWrap> for Node {
 
     fn try_into(self) -> Result<WindowWrap, Self::Error> {
         match self {
-            Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w),
+            _ => Err("tried to unwrap a window got a container or a x11 popup"),
         }
     }
 }
@@ -38,8 +38,8 @@ impl<'a> TryInto<&'a mut WindowWrap> for &'a mut Node {
 
     fn try_into(self) -> Result<&'a mut WindowWrap, Self::Error> {
         match self {
-            Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w),
+            _ => Err("tried to unwrap a window got a container or a x11 popup"),
         }
     }
 }
@@ -50,8 +50,8 @@ impl TryInto<WindowWrap> for &Node {
 
     fn try_into(self) -> Result<WindowWrap, Self::Error> {
         match self {
-            Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w.clone()),
+            _ => Err("tried to unwrap a window got a container or a x11 popup"),
         }
     }
 }
@@ -63,7 +63,7 @@ impl TryInto<ContainerRef> for Node {
     fn try_into(self) -> Result<ContainerRef, Self::Error> {
         match self {
             Node::Container(c) => Ok(c),
-            Node::Window(_) => Err("tried to unwrap a container got a window"),
+            _ => Err("tried to unwrap a container got a window"),
         }
     }
 }
@@ -75,7 +75,7 @@ impl TryInto<ContainerRef> for &Node {
     fn try_into(self) -> Result<ContainerRef, Self::Error> {
         match self {
             Node::Container(c) => Ok(c.clone()),
-            Node::Window(_) => Err("tried to unwrap a container got a window"),
+            _ => Err("tried to unwrap a container got a window"),
         }
     }
 }
@@ -86,8 +86,8 @@ impl<'a> TryInto<&'a WindowWrap> for &'a Node {
 
     fn try_into(self) -> Result<&'a WindowWrap, Self::Error> {
         match self {
-            Node::Container(_) => Err("tried to unwrap a window got a container"),
             Node::Window(w) => Ok(w),
+            _ => Err("tried to unwrap a window got a container or a x11 popup"),
         }
     }
 }
@@ -99,7 +99,7 @@ impl<'a> TryInto<&'a ContainerRef> for &'a Node {
     fn try_into(self) -> Result<&'a ContainerRef, Self::Error> {
         match self {
             Node::Container(c) => Ok(c),
-            Node::Window(_) => Err("tried to unwrap a container got a window"),
+            _ => Err("tried to unwrap a container got a window"),
         }
     }
 }

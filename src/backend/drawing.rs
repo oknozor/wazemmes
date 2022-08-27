@@ -22,6 +22,7 @@ pub type GlMultiFrame = MultiFrame<EglGlesBackend, EglGlesBackend>;
 
 pub const FLOATING_Z_INDEX: u8 = 101;
 pub const TILING_Z_INDEX: u8 = 100;
+pub const POP_UP_Z_INDEX: u8 = 102;
 pub const CURSOR_Z_INDEX: u8 = 255;
 
 smithay::custom_elements! {

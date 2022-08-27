@@ -8,6 +8,9 @@ pub mod nodemap;
 pub mod window;
 pub mod workspace;
 
+#[cfg(feature = "xwayland")]
+pub mod x11_popup;
+
 impl Wazemmes {
     pub fn get_current_workspace(&self) -> WorkspaceRef {
         let current = &self.current_workspace;

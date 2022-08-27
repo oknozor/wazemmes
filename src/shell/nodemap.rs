@@ -37,15 +37,15 @@ impl NodeMap {
 
     pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWrap> {
         self.items.values().filter_map(|node| match node {
-            Node::Container(_) => None,
             Node::Window(w) => Some(w),
+            _ => None,
         })
     }
 
     pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
         self.items.values().filter_map(|node| match node {
             Node::Container(c) => Some(c),
-            Node::Window(_) => None,
+            _ => None,
         })
     }
 
@@ -100,12 +100,9 @@ impl NodeMap {
         }
 
         for node in &mut self.items.values() {
-            match node {
-                Node::Container(c) => {
-                    let mut ref_mut = c.get_mut();
-                    drained.extend(ref_mut.nodes.drain_all());
-                }
-                Node::Window(_) => {}
+            if let Node::Container(c) = node {
+                let mut ref_mut = c.get_mut();
+                drained.extend(ref_mut.nodes.drain_all());
             }
         }
 

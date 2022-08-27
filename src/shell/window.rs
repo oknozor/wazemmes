@@ -127,6 +127,10 @@ impl WindowWrap {
         self.inner.toplevel().wl_surface().id().protocol_id()
     }
 
+    pub fn location(&self) -> Point<i32, Logical> {
+        *self.get_state().loc.borrow()
+    }
+
     pub fn get(&self) -> &Window {
         &self.inner
     }

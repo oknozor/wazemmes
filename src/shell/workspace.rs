@@ -64,6 +64,8 @@ impl Workspace {
             parent: None,
             nodes: NodeMap::default(),
             layout: ContainerLayout::Horizontal,
+            #[cfg(feature = "xwayland")]
+            xpopups: vec![],
         };
 
         let root = ContainerRef::new(root);
@@ -95,9 +97,7 @@ impl Workspace {
                     let mut container = container.get_mut();
                     container.update_layout(geometry);
                 }
-                Node::Window(window) => {
-                    window.toggle_fullscreen(geometry);
-                }
+                Node::Window(window) => window.toggle_fullscreen(geometry),
             }
         } else {
             let mut root = self.root.get_mut();

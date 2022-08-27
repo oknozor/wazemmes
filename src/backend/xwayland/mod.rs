@@ -1,33 +1,31 @@
-use slog_scope::{debug, error};
+use slog_scope::{debug, error, warn};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
+use crate::backend::xwayland::window::WinType;
 use crate::shell::window::WindowWrap;
+use crate::shell::x11_popup::X11Popup;
 use crate::{Wazemmes, WorkspaceRef};
 use smithay::desktop::{Kind, Window, X11Surface};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::x11rb::X11Source;
-use smithay::utils::{Logical, Point, Size};
+use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::give_role;
 use x11rb::connection::Connection;
 use x11rb::errors::ReplyOrIdError;
 use x11rb::protocol::composite::{ConnectionExt as _, Redirect};
 use x11rb::protocol::xproto::{
-    ChangeWindowAttributesAux, ClientMessageEvent, ConfigWindow, ConfigureWindowAux,
-    ConnectionExt as _, EventMask, StackMode, Window as X11Window, WindowClass,
+    ChangeWindowAttributesAux, ConfigWindow, ConfigureWindowAux, ConnectionExt as _, EventMask,
+    StackMode, Window as X11Window, WindowClass,
 };
 use x11rb::protocol::Event;
 use x11rb::rust_connection::{DefaultStream, RustConnection};
 
-pub type MoveResizeWindowFlags = u32;
-
-pub const MOVE_RESIZE_WINDOW_X: MoveResizeWindowFlags = 1 << 8;
-pub const MOVE_RESIZE_WINDOW_Y: MoveResizeWindowFlags = 1 << 9;
-pub const MOVE_RESIZE_WINDOW_WIDTH: MoveResizeWindowFlags = 1 << 10;
-pub const MOVE_RESIZE_WINDOW_HEIGHT: MoveResizeWindowFlags = 1 << 11;
+mod client;
+mod window;
 
 impl Wazemmes {
     #[cfg(feature = "xwayland")]
@@ -44,6 +42,7 @@ impl Wazemmes {
         let (wm, source) = X11State::start_wm(connection, client).unwrap();
         self.x11_state = Some(wm);
         let workspace_ref = self.get_current_workspace();
+
         self._loop_handle
             .insert_source(source, move |event, _, data| {
                 if let Some(x11) = data.state.x11_state.as_mut() {
@@ -63,12 +62,27 @@ impl Wazemmes {
 }
 
 x11rb::atom_manager! {
-    Atoms: AtomsCookie {
+    pub Atoms: AtomsCookie {
         WM_S0,
         WL_SURFACE_ID,
         _WAZEMMES_CLOSE_CONNECTION,
         _NET_MOVERESIZE_WINDOW,
         _NET_CLOSE_WINDOW,
+        _NET_WM_WINDOW_TYPE,
+        _NET_WM_WINDOW_TYPE_DESKTOP,
+        _NET_WM_WINDOW_TYPE_DOCK,
+        _NET_WM_WINDOW_TYPE_TOOLBAR,
+        _NET_WM_WINDOW_TYPE_MENU,
+        _NET_WM_WINDOW_TYPE_UTILITY,
+        _NET_WM_WINDOW_TYPE_SPLASH,
+        _NET_WM_WINDOW_TYPE_DIALOG,
+        _NET_WM_WINDOW_TYPE_NORMAL,
+        _NET_WM_WINDOW_TYPE_COMBO,
+        _NET_WM_WINDOW_TYPE_DND,
+        _NET_WM_WINDOW_TYPE_NOTIFICATION,
+        _NET_WM_WINDOW_TYPE_POPUP_MENU,
+        _NET_WM_WINDOW_TYPE_TOOLTIP,
+        _NET_WM_WINDOW_TYPE_DROPDOWN_MENU,
     }
 }
 
@@ -186,14 +200,18 @@ impl X11State {
                     aux = aux.border_width(u32::try_from(r.border_width).unwrap());
                 }
 
+                println!("SIBLINGS {}", r.sibling);
+
                 self.conn.configure_window(r.window, &aux)?;
             }
             Event::MapRequest(r) => {
                 // Just grant the wish
+                debug!("XMap request for window={} parent={}", r.window, r.parent);
                 self.conn.map_window(r.window)?;
             }
             Event::ClientMessage(msg) => {
                 if msg.type_ == self.atoms._NET_MOVERESIZE_WINDOW {
+                    debug!("Got X Client message: _NET_MOVERESIZE_WINDOW");
                     let data = msg.data.as_data32();
                     let [_, _, _, w, h] = data;
                     let id = self.id_map.get(&msg.window).unwrap();
@@ -210,6 +228,7 @@ impl X11State {
                     self.conn.flush()?;
                     self.needs_redraw = true;
                 } else if msg.type_ == self.atoms._NET_CLOSE_WINDOW {
+                    debug!("Got X Client message: _NET_CLOSE_WINDOW");
                     // TODO: how do we correctly terminate the process here ?
                     self.conn.destroy_window(msg.window)?;
                     self.conn.flush()?;
@@ -225,6 +244,7 @@ impl X11State {
                         self.id_map.remove(&wl_id);
                     };
                 } else if msg.type_ == self.atoms.WL_SURFACE_ID {
+                    debug!("Got X Client message: WL_SURFACE_ID");
                     // We get a WL_SURFACE_ID message when Xwayland creates a WlSurface for a
                     // window. Both the creation of the surface and this client message happen at
                     // roughly the same time and are sent over different sockets (X11 socket and
@@ -244,12 +264,12 @@ impl X11State {
                             }
                         }
                     };
-
                     let id = msg.data.as_data32()[0];
                     let surface = self.client.object_from_protocol_id(dh, id);
 
                     match surface {
-                        Err(_) => {
+                        Err(err) => {
+                            warn!("X11 surface has invalid id {:?}", err);
                             self.unpaired_surfaces.insert(id, (msg.window, location));
                         }
                         Ok(surface) => {
@@ -272,6 +292,8 @@ impl X11State {
     fn new_window(&mut self, xwindow: X11Window, surface: WlSurface, ws: WorkspaceRef) {
         debug!("Matched X11 surface {:x?} to {:x?}", xwindow, surface);
 
+        let win_type = self.get_window_type(xwindow);
+
         if give_role(&surface, "x11_surface").is_err() {
             error!("Surface {:x?} already has a role?!", surface);
             return;
@@ -281,79 +303,24 @@ impl X11State {
         let ws = ws.get();
         let (container, _window) = ws.get_focus();
         let mut container = container.get_mut();
-        let window = WindowWrap::from_x11_window(Window::new(Kind::X11(x11surface)));
         self.id_map.insert(protocol_id, xwindow);
-        container.push_xwindow(window);
-        self.needs_redraw = true;
-    }
 
-    pub fn send_configure<S>(&self, id: u32, size: Option<S>)
-    where
-        S: Into<Size<i32, Logical>>,
-    {
-        let mut flags = 0;
-        let size = size.map(S::into).map(|size| (size.w as u32, size.h as u32));
-        let w = size.map(|s| s.0);
-        let h = size.map(|s| s.1);
-        let (x, y, w, h) = (None, None, w, h);
-
-        // Define the second byte of the move resize flags 32bit value
-        // Used to indicate that the associated value has been changed and needs to be acted upon
-        if x.is_some() {
-            flags |= MOVE_RESIZE_WINDOW_X;
-        }
-        if y.is_some() {
-            flags |= MOVE_RESIZE_WINDOW_Y;
-        }
-        if w.is_some() {
-            flags |= MOVE_RESIZE_WINDOW_WIDTH;
-        }
-        if h.is_some() {
-            flags |= MOVE_RESIZE_WINDOW_HEIGHT;
-        }
-
-        let data = [
-            flags,
-            x.unwrap_or(0),
-            y.unwrap_or(0),
-            w.unwrap_or(0),
-            h.unwrap_or(0),
-        ];
-
-        let message = ClientMessageEvent::new(32, id, self.atoms._NET_MOVERESIZE_WINDOW, data);
-        let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-        let reply = self
-            .conn
-            .send_event(false, self.root, mask, &message)
-            .unwrap()
-            .check();
-
-        self.conn.flush().unwrap();
-
-        if let Err(err) = reply {
-            error!("Error sending resize event {err}");
-        }
-    }
-
-    // TODO: handle error (for instance we don't have the window id)
-    pub fn send_close(&mut self, id: u32) {
-        let id = self.id_map.get(&id);
-        if let Some(id) = id {
-            let message =
-                ClientMessageEvent::new(32, *id, self.atoms._NET_CLOSE_WINDOW, [0, 0, 0, 0, 0]);
-            let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-            let reply = self
-                .conn
-                .send_event(false, self.root, mask, &message)
-                .unwrap()
-                .check();
-
-            self.conn.flush().unwrap();
-
-            if let Err(err) = reply {
-                error!("Error sending close event {err}");
+        match win_type {
+            WinType::Normal => {
+                debug!("New toplevel from XWindow {xwindow}");
+                let window = WindowWrap::from_x11_window(Window::new(Kind::X11(x11surface)));
+                container.push_xwindow(window);
+            }
+            _ => {
+                let popup = Window::new(Kind::X11(x11surface));
+                let loc = self.get_location(xwindow);
+                let parent = self.get_parent(xwindow);
+                debug!("xpopup_id={:?}, parent={}", loc, parent);
+                container.push_xpopup(X11Popup::new(popup, loc));
             }
         }
+
+        self.needs_redraw = true;
     }
 }
 

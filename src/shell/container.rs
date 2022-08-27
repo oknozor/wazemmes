@@ -16,6 +16,7 @@ use crate::shell::node::Node;
 
 use crate::shell::nodemap::NodeMap;
 use crate::shell::window::WindowWrap;
+use crate::shell::x11_popup::X11Popup;
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {
@@ -76,6 +77,8 @@ pub struct Container {
     pub parent: Option<ContainerRef>,
     pub nodes: NodeMap,
     pub layout: ContainerLayout,
+    #[cfg(feature = "xwayland")]
+    pub xpopups: Vec<X11Popup>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -127,8 +130,8 @@ impl Container {
 
     pub fn get_focused_window(&self) -> Option<WindowWrap> {
         self.nodes.get_focused().and_then(|node| match node {
-            Node::Container(_) => None,
             Node::Window(window) => Some(window.clone()),
+            _ => None,
         })
     }
 
@@ -173,6 +176,11 @@ impl Container {
         }
     }
 
+    #[cfg(feature = "xwayland")]
+    pub fn push_xpopup(&mut self, popup: X11Popup) {
+        self.xpopups.push(popup);
+    }
+
     pub fn insert_window_after(&mut self, target_id: u32, window: WindowWrap) {
         let id = window.id();
         self.nodes.insert_after(target_id, Node::Window(window));
@@ -210,6 +218,8 @@ impl Container {
                 parent: Some(parent),
                 nodes: NodeMap::default(),
                 layout,
+                #[cfg(feature = "xwayland")]
+                xpopups: vec![],
             };
 
             let child_ref = ContainerRef::new(child);
@@ -259,25 +269,33 @@ impl Container {
                 }
             }
         }
+
+        for xpopup in &self.xpopups {
+            if let Some(focus) = self.get_focused_window() {
+                debug!(
+                    "Shifting popup location to its parent loc={:?}",
+                    focus.location()
+                );
+                xpopup.shift_location(focus.location());
+            }
+
+            debug!("Drawing Xpopup");
+            xpopup.map(space)
+        }
     }
 
     pub fn update_layout(&mut self, output_geometry: Rectangle<i32, Logical>) -> bool {
-        // Ensure dead widow get remove before updating the container
         self.nodes.remove_dead_windows();
 
-        // Don't draw anything if the container is empty
         if self.nodes.spine.is_empty() {
             return false;
         }
 
-        // reparent sub children having containers only
         self.reparent_orphans();
 
         let mut redraw = false;
 
-        // Initial geometry
         if let Some(size) = self.get_child_size() {
-            // Draw everything
             let mut tiling_index = 0;
 
             for (_, node) in self.nodes.iter_spine() {
@@ -316,6 +334,14 @@ impl Container {
                     }
                     _ => unreachable!("Container should only have floating windows"),
                 }
+            }
+        }
+
+        self.xpopups.drain_filter(|xpopup| !xpopup.alive());
+
+        for xpopup in &self.xpopups {
+            if xpopup.needs_initial_render() {
+                redraw = true
             }
         }
 

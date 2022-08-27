@@ -108,16 +108,12 @@ impl OutputHandler for CallLoopData {
             }
         }
 
-        let x11_update = self
-            .state
-            .x11_state
-            .as_ref()
-            .map(|state| state.needs_redraw)
-            .unwrap_or(false);
-
-        if x11_update {
-            println!("X11 update");
-            ws.update_layout(&self.state.space);
+        if let Some(x11) = &mut self.state.x11_state {
+            if x11.needs_redraw {
+                println!("X11 update");
+                ws.update_layout(&self.state.space);
+                x11.needs_redraw = false;
+            }
         }
 
         if ws.needs_redraw {
