@@ -1,6 +1,7 @@
 #![feature(drain_filter)]
 #![feature(hash_drain_filter)]
 
+use std::cell::RefCell;
 use crate::backend::BackendState;
 use crate::config::WazemmesConfig;
 use crate::resources::pointer::PointerIcon;
@@ -20,7 +21,6 @@ use smithay::wayland::data_device;
 use smithay::wayland::data_device::DataDeviceState;
 use smithay::wayland::dmabuf::DmabufState;
 use smithay::wayland::output::OutputManagerState;
-use smithay::wayland::seat::{Seat, SeatState};
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
@@ -28,6 +28,8 @@ use smithay::wayland::socket::ListeningSocketSource;
 use std::ffi::OsString;
 use std::sync::Arc;
 use std::time::Instant;
+use smithay::input::{Seat, SeatState};
+use smithay::wayland::primary_selection::PrimarySelectionState;
 
 #[cfg(feature = "xwayland")]
 use smithay::xwayland::{XWayland, XWaylandEvent};
@@ -151,23 +153,18 @@ fn main() -> eyre::Result<()> {
     let xdg_shell_state = XdgShellState::new::<Wazemmes, _>(&dh, slog_scope::logger());
     let shm_state = ShmState::new::<Wazemmes, _>(&dh, vec![], slog_scope::logger());
     let output_manager_state = OutputManagerState::new_with_xdg_output::<Wazemmes>(&dh);
-    let seat_state = SeatState::<Wazemmes>::new();
+    let primary_selection_state = PrimarySelectionState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+    let mut seat_state = SeatState::<Wazemmes>::new();
     let data_device_state = DataDeviceState::new::<Wazemmes, _>(&dh, slog_scope::logger());
     let xdg_decoration_state = XdgDecorationState::new::<Wazemmes, _>(&dh, slog_scope::logger());
 
     let dmabuf_state = DmabufState::new();
 
-    let mut seat = Seat::<Wazemmes>::new(&display.handle(), "seat0", slog_scope::logger());
+    let mut seat = seat_state.new_wl_seat(&display.handle(), "seat0", slog_scope::logger());
 
-    seat.add_pointer({
-        let pointer_icon = pointer_icon.clone();
-        move |cursor| pointer_icon.on_new_cursor(cursor)
-    });
+    seat.add_pointer();
 
-    seat.add_keyboard(Default::default(), 200, 25, move |seat, focus| {
-        let focus = focus.and_then(|s| dh.get_client(s.id()).ok());
-        data_device::set_data_device_focus(&dh, seat, focus);
-    })?;
+    seat.add_keyboard(Default::default(), 200, 200)?;
 
     #[cfg(feature = "xwayland")]
     let xwayland = init_xwayland_connection(&event_loop.handle(), &display.handle());
@@ -183,6 +180,7 @@ fn main() -> eyre::Result<()> {
         compositor_state,
         xdg_shell_state,
         xdg_decoration_state,
+        primary_selection_state,
         shm_state,
         _output_manager_state: output_manager_state,
         seat_state,
@@ -201,7 +199,7 @@ fn main() -> eyre::Result<()> {
         workspaces: Default::default(),
         current_workspace: 0,
         next_layout: None,
-        mod_pressed: false,
+        mod_pressed: RefCell::new(false),
 
         config: WazemmesConfig::get()?,
     };

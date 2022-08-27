@@ -42,7 +42,7 @@ impl Wazemmes {
     pub fn xwayland_ready(&mut self, connection: UnixStream, client: Client) {
         let (wm, source) = X11State::start_wm(connection, client).unwrap();
         self.x11_state = Some(wm);
-        let workspace_ref = self.get_current_workspace().clone();
+        let workspace_ref = self.get_current_workspace();
         self._loop_handle
             .insert_source(source, move |event, _, data| {
                 if let Some(x11) = data.state.x11_state.as_mut() {
@@ -209,7 +209,7 @@ impl X11State {
                     let window_ids = self
                         .id_map
                         .iter()
-                        .find(|(wl_id, x_id)| **x_id == msg.window)
+                        .find(|(_wl_id, x_id)| **x_id == msg.window)
                         .map(|(w_id, x_id)| (*w_id, *x_id));
 
                     if let Some((wl_id, _x_id)) = window_ids {

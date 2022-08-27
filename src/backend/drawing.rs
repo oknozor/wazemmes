@@ -11,11 +11,10 @@ use smithay::backend::renderer::multigpu::egl::EglGlesBackend;
 use smithay::backend::renderer::multigpu::{Error as MultiError, MultiFrame, MultiRenderer};
 
 use smithay::desktop::space::{RenderElement, SpaceOutputTuple, SurfaceTree};
+use smithay::input::pointer::CursorImageAttributes;
 use smithay::reexports::wayland_server::protocol::wl_surface;
 use smithay::utils::{Logical, Physical, Point, Rectangle, Scale};
 use smithay::wayland::compositor;
-
-use smithay::wayland::seat::CursorImageAttributes;
 
 pub type GlMultiRenderer<'a> =
     MultiRenderer<'a, 'a, EglGlesBackend, EglGlesBackend, Gles2Renderbuffer>;

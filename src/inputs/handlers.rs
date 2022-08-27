@@ -5,16 +5,13 @@ use crate::shell::window::{WindowState, WindowWrap};
 use crate::state::CallLoopData;
 
 use slog_scope::{debug, warn};
-use smithay::backend::input::{
-    Axis, AxisSource, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent,
-};
+use smithay::backend::input::{Axis, AxisSource, ButtonState, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent};
 use smithay::desktop::{Kind, Window};
 use smithay::nix::libc;
-use smithay::reexports::wayland_server::protocol::wl_pointer;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Point};
-use smithay::wayland::seat::{AxisFrame, ButtonEvent, Focus};
-use smithay::wayland::{Serial, SERIAL_COUNTER};
+use smithay::input::pointer::{AxisFrame, ButtonEvent, Focus};
+use smithay::utils::{Serial, SERIAL_COUNTER};
 use std::io;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -130,7 +127,7 @@ impl CallLoopData {
                     .expect("Should have a keyboard seat");
 
                 let serial = SERIAL_COUNTER.next_serial();
-                handle.set_focus(display, Some(&window.wl_surface()), serial);
+                handle.set_focus(&mut self.state, Some(window.wl_surface()), serial);
             }
         }
 
@@ -149,11 +146,10 @@ impl CallLoopData {
         let pointer = self.state.seat.get_pointer().unwrap();
         let serial = SERIAL_COUNTER.next_serial();
         let button = event.button_code();
-        let button_state = wl_pointer::ButtonState::from(event.state());
+        let button_state = ButtonState::from(event.state());
 
         pointer.button(
             &mut self.state,
-            dh,
             &ButtonEvent {
                 button,
                 state: button_state,
@@ -163,7 +159,7 @@ impl CallLoopData {
         );
 
         if let Some(MouseButton::Left) = event.button() {
-            if wl_pointer::ButtonState::Pressed == button_state {
+            if ButtonState::Pressed == button_state {
                 if let Some(window) = self
                     .state
                     .space
@@ -172,7 +168,7 @@ impl CallLoopData {
                 {
                     let window = WindowWrap::from(window);
 
-                    if self.state.mod_pressed && window.is_floating() {
+                    if *self.state.mod_pressed.borrow() && window.is_floating() {
                         let pos = pointer.current_location();
                         let initial_window_location = (pos.x as i32, pos.y as i32).into();
                         let start_data = pointer.grab_start_data().unwrap();
@@ -185,7 +181,7 @@ impl CallLoopData {
                             initial_window_location,
                         };
 
-                        pointer.set_grab(grab, serial, Focus::Clear);
+                        pointer.set_grab(&mut self.state, grab, serial, Focus::Clear);
                     } else {
                         let id = window.id();
                         let ws = self.state.get_current_workspace();
@@ -208,7 +204,7 @@ impl CallLoopData {
                     });
 
                     let keyboard = self.state.seat.get_keyboard().unwrap();
-                    keyboard.set_focus(dh, None, serial);
+                    keyboard.set_focus(&mut self.state, None, serial);
                 }
             }
         }
@@ -232,7 +228,7 @@ impl CallLoopData {
             .space
             .map_window(window.get(), location, window.z_index(), true);
 
-        keyboard.set_focus(dh, Some(&window.wl_surface()), serial);
+        keyboard.set_focus(&mut self.state, Some(window.wl_surface()), serial);
 
         let window = window.get();
         window.set_activated(true);
@@ -454,9 +450,9 @@ impl CallLoopData {
 
 pub fn basic_axis_frame<I: InputBackend>(evt: &I::PointerAxisEvent) -> AxisFrame {
     let source = match evt.source() {
-        AxisSource::Continuous => wl_pointer::AxisSource::Continuous,
-        AxisSource::Finger => wl_pointer::AxisSource::Finger,
-        AxisSource::Wheel | AxisSource::WheelTilt => wl_pointer::AxisSource::Wheel,
+        AxisSource::Continuous => AxisSource::Continuous,
+        AxisSource::Finger => AxisSource::Finger,
+        AxisSource::Wheel | AxisSource::WheelTilt => AxisSource::Wheel,
     };
     let horizontal_amount = evt
         .amount(Axis::Horizontal)
@@ -469,21 +465,21 @@ pub fn basic_axis_frame<I: InputBackend>(evt: &I::PointerAxisEvent) -> AxisFrame
 
     let mut frame = AxisFrame::new(evt.time()).source(source);
     if horizontal_amount != 0.0 {
-        frame = frame.value(wl_pointer::Axis::HorizontalScroll, horizontal_amount);
+        frame = frame.value(Axis::Horizontal, horizontal_amount);
         if let Some(discrete) = horizontal_amount_discrete {
-            frame = frame.discrete(wl_pointer::Axis::HorizontalScroll, discrete as i32);
+            frame = frame.discrete(Axis::Horizontal, discrete as i32);
         }
-    } else if source == wl_pointer::AxisSource::Finger {
-        frame = frame.stop(wl_pointer::Axis::HorizontalScroll);
+    } else if source == AxisSource::Finger {
+        frame = frame.stop(Axis::Horizontal);
     }
 
     if vertical_amount != 0.0 {
-        frame = frame.value(wl_pointer::Axis::VerticalScroll, vertical_amount);
+        frame = frame.value(Axis::Vertical, vertical_amount);
         if let Some(discrete) = vertical_amount_discrete {
-            frame = frame.discrete(wl_pointer::Axis::VerticalScroll, discrete as i32);
+            frame = frame.discrete(Axis::Vertical, discrete as i32);
         }
-    } else if source == wl_pointer::AxisSource::Finger {
-        frame = frame.stop(wl_pointer::Axis::VerticalScroll);
+    } else if source == AxisSource::Finger {
+        frame = frame.stop(Axis::Vertical);
     }
 
     frame

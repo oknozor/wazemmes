@@ -7,14 +7,16 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Resource;
-use smithay::wayland::seat::{PointerGrabStartData, Seat};
+use smithay::input::{Seat};
 use smithay::wayland::shell::xdg::{
     Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
-use smithay::wayland::Serial;
+use smithay::input::pointer::GrabStartData;
+use smithay::utils::Serial;
 
 use crate::Wazemmes;
-use smithay::wayland::SERIAL_COUNTER;
+use smithay::utils::SERIAL_COUNTER;
+use x11rb::protocol::xproto::ConnectionExt;
 
 impl XdgShellHandler for Wazemmes {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -45,7 +47,7 @@ impl XdgShellHandler for Wazemmes {
                 .expect("Should have a keyboard seat");
 
             let serial = SERIAL_COUNTER.next_serial();
-            handle.set_focus(&self.display, Some(surface.wl_surface()), serial);
+            handle.set_focus(self, Some(surface.wl_surface().clone()), serial);
         }
     }
 
@@ -106,7 +108,7 @@ fn check_grab(
     seat: &Seat<Wazemmes>,
     surface: &WlSurface,
     serial: Serial,
-) -> Option<PointerGrabStartData> {
+) -> Option<GrabStartData<Wazemmes>> {
     let pointer = seat.get_pointer()?;
     debug!("Check grab");
 

@@ -4,7 +4,7 @@ use crate::backend::drawing::{draw_cursor, draw_dnd_icon};
 use smithay::desktop::space::SurfaceTree;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{IsAlive, Logical, Point};
-use smithay::wayland::seat::CursorImageStatus;
+use smithay::input::pointer::CursorImageStatus;
 
 #[derive(Debug, Clone)]
 pub struct PointerIcon {
@@ -52,7 +52,7 @@ impl PointerIcon {
         let mut cursor_status = self.pointer_icon.lock().unwrap();
 
         // reset the cursor if the surface is no longer alive
-        let reset = if let CursorImageStatus::Image(ref surface) = *cursor_status {
+        let reset = if let CursorImageStatus::Surface(surface) = &*cursor_status {
             !surface.alive()
         } else {
             false
@@ -62,7 +62,7 @@ impl PointerIcon {
             *cursor_status = CursorImageStatus::Default;
         }
 
-        if let CursorImageStatus::Image(ref wl_surface) = *cursor_status {
+        if let CursorImageStatus::Surface(wl_surface) = &*cursor_status {
             Some(draw_cursor(wl_surface.clone(), location))
         } else {
             None

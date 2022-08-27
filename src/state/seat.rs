@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use crate::Wazemmes;
 use smithay::backend::input::KeyState;
 use smithay::utils::{Logical, Point};
-use smithay::wayland::seat::Seat;
+use smithay::input::Seat;
 
 #[derive(Debug, Default)]
 pub struct SeatState {

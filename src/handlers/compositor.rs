@@ -19,7 +19,7 @@ use smithay::wayland::shell::xdg::{
     XdgPopupSurfaceRoleAttributes, XdgToplevelSurfaceRoleAttributes,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
-use smithay::wayland::Serial;
+use smithay::utils::Serial;
 use smithay::{delegate_compositor, delegate_shm};
 use std::cell::RefCell;
 use std::sync::Mutex;

@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use crate::shell::container::ContainerLayout;
 use crate::shell::workspace::WorkspaceRef;
 
@@ -12,7 +13,8 @@ use smithay::wayland::compositor::CompositorState;
 use smithay::wayland::data_device::DataDeviceState;
 use smithay::wayland::output::{Output, OutputManagerState};
 
-use smithay::wayland::seat::{PointerHandle, Seat, SeatState};
+use smithay::input::{Seat, SeatState};
+use smithay::input::pointer::PointerHandle;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
 
@@ -27,6 +29,7 @@ use std::ffi::OsString;
 
 use crate::config::WazemmesConfig;
 use std::time::Instant;
+use smithay::wayland::primary_selection::PrimarySelectionState;
 
 #[cfg(feature = "xwayland")]
 use crate::backend::xwayland::X11State;
@@ -47,6 +50,7 @@ pub struct Wazemmes {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    pub primary_selection_state: PrimarySelectionState,
     pub shm_state: ShmState,
     pub _output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Self>,
@@ -62,7 +66,7 @@ pub struct Wazemmes {
     pub x11_state: Option<X11State>,
 
     // Shell
-    pub mod_pressed: bool,
+    pub mod_pressed: RefCell<bool>,
     pub workspaces: HashMap<u8, WorkspaceRef>,
     pub current_workspace: u8,
     pub next_layout: Option<ContainerLayout>,
