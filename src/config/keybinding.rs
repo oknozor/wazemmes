@@ -1,9 +1,9 @@
 use crate::inputs::handlers::Direction;
 use crate::inputs::KeyAction;
 use serde::{Deserialize, Serialize, Serializer};
+use smithay::input::keyboard::ModifiersState;
 use std::collections::HashSet;
 use std::hash::Hash;
-use smithay::input::keyboard::ModifiersState;
 use xkbcommon::xkb;
 use xkbcommon::xkb::Keysym;
 
@@ -28,8 +28,21 @@ impl KeyBinding {
 }
 
 fn match_modifier(modifier: ModifiersState, other: ModifiersState) -> bool {
-    (modifier.ctrl, modifier.alt, modifier.shift, modifier.logo, modifier.caps_lock, modifier.num_lock)
-        == (other.ctrl, other.alt, other.shift, other.logo, other.caps_lock, other.num_lock)
+    (
+        modifier.ctrl,
+        modifier.alt,
+        modifier.shift,
+        modifier.logo,
+        modifier.caps_lock,
+        modifier.num_lock,
+    ) == (
+        other.ctrl,
+        other.alt,
+        other.shift,
+        other.logo,
+        other.caps_lock,
+        other.num_lock,
+    )
 }
 
 impl Into<ModifiersState> for &KeyBinding {
@@ -119,8 +132,8 @@ pub enum Modifier {
 }
 
 fn serialize_key<S>(key: &Keysym, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
+where
+    S: Serializer,
 {
     let name = xkb::keysym_get_name(*key);
     serializer.serialize_str(&name)
@@ -128,8 +141,8 @@ fn serialize_key<S>(key: &Keysym, serializer: S) -> Result<S::Ok, S::Error>
 
 #[allow(non_snake_case)]
 fn deserialize_key<'de, D>(deserializer: D) -> Result<Keysym, D::Error>
-    where
-        D: serde::Deserializer<'de>,
+where
+    D: serde::Deserializer<'de>,
 {
     use serde::de::{Error, Unexpected};
 

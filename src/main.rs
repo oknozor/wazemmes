@@ -1,7 +1,6 @@
 #![feature(drain_filter)]
 #![feature(hash_drain_filter)]
 
-use std::cell::RefCell;
 use crate::backend::BackendState;
 use crate::config::WazemmesConfig;
 use crate::resources::pointer::PointerIcon;
@@ -12,15 +11,16 @@ use slog::Drain;
 use slog_scope::error;
 use smithay::desktop;
 use smithay::desktop::PopupManager;
+use smithay::input::SeatState;
 use smithay::reexports::calloop::generic::Generic;
 use smithay::reexports::calloop::{EventLoop, Interest, LoopHandle, Mode, PostAction};
 use smithay::reexports::wayland_server::backend::{ClientData, ClientId, DisconnectReason};
-use smithay::reexports::wayland_server::{Display, DisplayHandle, Resource};
+use smithay::reexports::wayland_server::{Display, DisplayHandle};
 use smithay::wayland::compositor::CompositorState;
-use smithay::wayland::data_device;
 use smithay::wayland::data_device::DataDeviceState;
 use smithay::wayland::dmabuf::DmabufState;
 use smithay::wayland::output::OutputManagerState;
+use smithay::wayland::primary_selection::PrimarySelectionState;
 use smithay::wayland::shell::xdg::decoration::XdgDecorationState;
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
@@ -28,8 +28,6 @@ use smithay::wayland::socket::ListeningSocketSource;
 use std::ffi::OsString;
 use std::sync::Arc;
 use std::time::Instant;
-use smithay::input::{Seat, SeatState};
-use smithay::wayland::primary_selection::PrimarySelectionState;
 
 #[cfg(feature = "xwayland")]
 use smithay::xwayland::{XWayland, XWaylandEvent};
@@ -153,7 +151,8 @@ fn main() -> eyre::Result<()> {
     let xdg_shell_state = XdgShellState::new::<Wazemmes, _>(&dh, slog_scope::logger());
     let shm_state = ShmState::new::<Wazemmes, _>(&dh, vec![], slog_scope::logger());
     let output_manager_state = OutputManagerState::new_with_xdg_output::<Wazemmes>(&dh);
-    let primary_selection_state = PrimarySelectionState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+    let primary_selection_state =
+        PrimarySelectionState::new::<Wazemmes, _>(&dh, slog_scope::logger());
     let mut seat_state = SeatState::<Wazemmes>::new();
     let data_device_state = DataDeviceState::new::<Wazemmes, _>(&dh, slog_scope::logger());
     let xdg_decoration_state = XdgDecorationState::new::<Wazemmes, _>(&dh, slog_scope::logger());
@@ -199,12 +198,15 @@ fn main() -> eyre::Result<()> {
         workspaces: Default::default(),
         current_workspace: 0,
         next_layout: None,
-        mod_pressed: RefCell::new(false),
-
-        config: WazemmesConfig::get()?,
+        mod_pressed: false,
     };
 
-    let mut data = CallLoopData { state, display };
+    let config = WazemmesConfig::get()?;
+    let mut data = CallLoopData {
+        state,
+        config,
+        display,
+    };
 
     backend::init(
         &mut event_loop,

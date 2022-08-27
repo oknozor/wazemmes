@@ -2,9 +2,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::backend::drawing::{draw_cursor, draw_dnd_icon};
 use smithay::desktop::space::SurfaceTree;
+use smithay::input::pointer::CursorImageStatus;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{IsAlive, Logical, Point};
-use smithay::input::pointer::CursorImageStatus;
 
 #[derive(Debug, Clone)]
 pub struct PointerIcon {

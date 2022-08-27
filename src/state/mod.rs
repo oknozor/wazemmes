@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use crate::shell::container::ContainerLayout;
 use crate::shell::workspace::WorkspaceRef;
 
@@ -13,8 +12,8 @@ use smithay::wayland::compositor::CompositorState;
 use smithay::wayland::data_device::DataDeviceState;
 use smithay::wayland::output::{Output, OutputManagerState};
 
-use smithay::input::{Seat, SeatState};
 use smithay::input::pointer::PointerHandle;
+use smithay::input::{Seat, SeatState};
 use smithay::wayland::shell::xdg::XdgShellState;
 use smithay::wayland::shm::ShmState;
 
@@ -28,8 +27,8 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 
 use crate::config::WazemmesConfig;
-use std::time::Instant;
 use smithay::wayland::primary_selection::PrimarySelectionState;
+use std::time::Instant;
 
 #[cfg(feature = "xwayland")]
 use crate::backend::xwayland::X11State;
@@ -66,11 +65,10 @@ pub struct Wazemmes {
     pub x11_state: Option<X11State>,
 
     // Shell
-    pub mod_pressed: RefCell<bool>,
+    pub mod_pressed: bool,
     pub workspaces: HashMap<u8, WorkspaceRef>,
     pub current_workspace: u8,
     pub next_layout: Option<ContainerLayout>,
-    pub config: WazemmesConfig,
 }
 
 impl Wazemmes {
@@ -100,5 +98,6 @@ pub trait Backend {
 
 pub struct CallLoopData {
     pub state: Wazemmes,
+    pub config: WazemmesConfig,
     pub display: Display<Wazemmes>,
 }

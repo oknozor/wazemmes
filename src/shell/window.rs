@@ -130,6 +130,10 @@ impl WindowWrap {
         self.inner.user_data().get::<WindowState>().unwrap().id()
     }
 
+    pub fn wl_id(&self) -> u32 {
+        self.inner.toplevel().wl_surface().id().protocol_id()
+    }
+
     pub fn get(&self) -> &Window {
         &self.inner
     }
@@ -184,10 +188,7 @@ impl WindowWrap {
     pub fn send_close(&self, x11_state: Option<&mut X11State>) {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => toplevel.send_close(),
-            Kind::X11(_x11surface) => x11_state.unwrap().send_close(self.id()),
-        }
-        if let Some(toplevel) = self.toplevel() {
-            toplevel.send_close()
+            Kind::X11(_x11surface) => x11_state.unwrap().send_close(self.wl_id()),
         }
     }
 

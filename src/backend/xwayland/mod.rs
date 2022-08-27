@@ -4,6 +4,7 @@ use std::convert::TryFrom;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
+use crate::shell::window::WindowWrap;
 use crate::{Wazemmes, WorkspaceRef};
 use smithay::desktop::{Kind, Window, X11Surface};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -80,6 +81,7 @@ pub struct X11State {
     unpaired_surfaces: HashMap<u32, (X11Window, Point<i32, Logical>)>,
     id_map: HashMap<u32, u32>,
     root: x11rb::protocol::xproto::Window,
+    pub needs_update: bool,
 }
 
 impl X11State {
@@ -135,6 +137,7 @@ impl X11State {
             unpaired_surfaces: Default::default(),
             id_map: Default::default(),
             root,
+            needs_update: false,
         };
 
         Ok((
@@ -155,9 +158,10 @@ impl X11State {
         ws: WorkspaceRef,
     ) -> Result<(), ReplyOrIdError> {
         debug!("X11: Got event {:?}", event);
+        self.needs_update = false;
+
         match event {
             Event::ConfigureRequest(r) => {
-                println!("{:?}", r);
                 // Just grant the wish
                 let mut aux = ConfigureWindowAux::default();
                 if r.value_mask & u16::from(ConfigWindow::STACK_MODE) != 0 {
@@ -202,10 +206,13 @@ impl X11State {
                         sibling: None,
                         stack_mode: Some(StackMode::ABOVE),
                     };
-
                     self.conn.configure_window(*id, &aux)?;
+                    self.needs_update = true;
                 } else if msg.type_ == self.atoms._NET_CLOSE_WINDOW {
+                    // TODO: how do we correctly terminate the process here ?
                     self.conn.destroy_window(msg.window)?;
+                    self.conn.flush()?;
+
                     let window_ids = self
                         .id_map
                         .iter()
@@ -215,6 +222,8 @@ impl X11State {
                     if let Some((wl_id, _x_id)) = window_ids {
                         self.id_map.remove(&wl_id);
                     };
+
+                    self.needs_update = true;
                 } else if msg.type_ == self.atoms.WL_SURFACE_ID {
                     // We get a WL_SURFACE_ID message when Xwayland creates a WlSurface for a
                     // window. Both the creation of the surface and this client message happen at
@@ -248,31 +257,33 @@ impl X11State {
                                 "X11 surface {:x?} corresponds to WlSurface {:x} = {:?}",
                                 msg.window, id, surface,
                             );
-                            self.new_window(msg.window, surface, ws);
+                            self.new_window(msg.window, surface, ws.clone());
                         }
                     }
                 }
             }
             _ => {}
         }
+
         self.conn.flush()?;
         Ok(())
     }
 
-    fn new_window(&mut self, window: X11Window, surface: WlSurface, ws: WorkspaceRef) {
-        debug!("Matched X11 surface {:x?} to {:x?}", window, surface);
-        self.id_map.insert(surface.id().protocol_id(), window);
+    fn new_window(&mut self, xwindow: X11Window, surface: WlSurface, ws: WorkspaceRef) {
+        debug!("Matched X11 surface {:x?} to {:x?}", xwindow, surface);
         if give_role(&surface, "x11_surface").is_err() {
             // It makes no sense to post a protocol error here since that would only kill Xwayland
             error!("Surface {:x?} already has a role?!", surface);
             return;
         }
 
+        let protocol_id = surface.id().protocol_id();
         let x11surface = X11Surface { surface };
         let ws = ws.get();
         let (container, _window) = ws.get_focus();
         let mut container = container.get_mut();
-        let window = Window::new(Kind::X11(x11surface));
+        let window = WindowWrap::from_x11_window(Window::new(Kind::X11(x11surface)));
+        self.id_map.insert(protocol_id, xwindow);
         container.push_xwindow(window);
     }
 
@@ -281,12 +292,9 @@ impl X11State {
         S: Into<Size<i32, Logical>>,
     {
         let mut flags = 0;
-
         let size = size.map(S::into).map(|size| (size.w as u32, size.h as u32));
-
         let w = size.map(|s| s.0);
         let h = size.map(|s| s.1);
-
         let (x, y, w, h) = (None, None, w, h);
 
         // Define the second byte of the move resize flags 32bit value
@@ -311,6 +319,7 @@ impl X11State {
             w.unwrap_or(0),
             h.unwrap_or(0),
         ];
+
         let message = ClientMessageEvent::new(32, id, self.atoms._NET_MOVERESIZE_WINDOW, data);
         let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
         let reply = self
@@ -326,20 +335,24 @@ impl X11State {
         }
     }
 
+    // TODO: handle error (for instance we don't have the window id)
     pub fn send_close(&mut self, id: u32) {
-        let data = [0, 0, 0, 0, 0];
-        let message = ClientMessageEvent::new(32, id, self.atoms._NET_CLOSE_WINDOW, data);
-        let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
-        let reply = self
-            .conn
-            .send_event(false, self.root, mask, &message)
-            .unwrap()
-            .check();
+        let id = self.id_map.get(&id);
+        if let Some(id) = id {
+            let message =
+                ClientMessageEvent::new(32, *id, self.atoms._NET_CLOSE_WINDOW, [0, 0, 0, 0, 0]);
+            let mask = EventMask::SUBSTRUCTURE_REDIRECT | EventMask::SUBSTRUCTURE_NOTIFY;
+            let reply = self
+                .conn
+                .send_event(false, self.root, mask, &message)
+                .unwrap()
+                .check();
 
-        self.conn.flush().unwrap();
+            self.conn.flush().unwrap();
 
-        if let Err(err) = reply {
-            error!("Error sending resize event {err}");
+            if let Err(err) = reply {
+                error!("Error sending close event {err}");
+            }
         }
     }
 }

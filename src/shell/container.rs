@@ -1,8 +1,9 @@
+use slog_scope::debug;
 use std::cell::{Ref, RefCell, RefMut};
 use std::num::NonZeroUsize;
 use std::rc::Rc;
 
-use smithay::desktop::{Space, Window};
+use smithay::desktop::Space;
 use smithay::utils::{Logical, Point, Size};
 
 use crate::backend::xwayland::X11State;
@@ -161,8 +162,8 @@ impl Container {
     }
 
     #[cfg(feature = "xwayland")]
-    pub fn push_xwindow(&mut self, window: Window) -> u32 {
-        let window = Node::Window(WindowWrap::from_x11_window(window));
+    pub fn push_xwindow(&mut self, window: WindowWrap) -> u32 {
+        let window = Node::Window(window);
         match self.get_focused_window() {
             None => self.nodes.push(window),
             Some(focus) => self
@@ -231,14 +232,21 @@ impl Container {
 
     pub fn close_window(&mut self, x11_state: Option<&mut X11State>) {
         let idx = self.get_focused_window().map(|window| {
+            debug!("Closing window({})", window.id());
             window.send_close(x11_state);
             window.id()
         });
 
         if let Some(id) = idx {
+            debug!("Removing window({}) from the tree", id);
             let _surface = self.nodes.remove(&id);
         }
     }
+
+    // TODO: Change this to a data structure holding the layout of the window only
+    //      so we dont need to hold Space and X11State
+    //      if anything gets mutated actually redraw the needed surfaces
+    //      in the main loop
 
     // Fully redraw a container, its window an children containers
     // Call this on the root of the tree to refresh a workspace
@@ -280,7 +288,26 @@ impl Container {
                     Node::Window(window) => {
                         let activate = Some(*id) == focused_window_id;
                         let loc = self.get_loc_for_index(tiling_index, size);
-                        window.configure(space, Some(x11_state), Some(size), loc, activate);
+                        match space.window_bbox(window.get()) {
+                            Some(current_geometry) => {
+                                // Redraw only if something has changed
+                                if current_geometry.size != size || current_geometry.loc != loc {
+                                    window.configure(
+                                        space,
+                                        Some(x11_state),
+                                        Some(size),
+                                        loc,
+                                        activate,
+                                    );
+                                } else {
+                                    debug!("Geometry did not change for window({})", window.id());
+                                }
+                            }
+                            None => {
+                                window.configure(space, Some(x11_state), Some(size), loc, activate);
+                            }
+                        }
+
                         tiling_index += 1;
                     }
                 }

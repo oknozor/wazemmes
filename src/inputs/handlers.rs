@@ -5,19 +5,21 @@ use crate::shell::window::{WindowState, WindowWrap};
 use crate::state::CallLoopData;
 
 use slog_scope::{debug, warn};
-use smithay::backend::input::{Axis, AxisSource, ButtonState, Event, InputBackend, MouseButton, PointerAxisEvent, PointerButtonEvent};
+use smithay::backend::input::{
+    Axis, AxisSource, ButtonState, Event, InputBackend, MouseButton, PointerAxisEvent,
+    PointerButtonEvent,
+};
 use smithay::desktop::{Kind, Window};
+use smithay::input::pointer::{AxisFrame, ButtonEvent, Focus};
 use smithay::nix::libc;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::utils::{Logical, Point};
-use smithay::input::pointer::{AxisFrame, ButtonEvent, Focus};
-use smithay::utils::{Serial, SERIAL_COUNTER};
+use smithay::utils::{Logical, Point, Serial, SERIAL_COUNTER};
 use std::io;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 
 impl CallLoopData {
-    pub fn run(cmd: String, env: impl IntoIterator<Item = (String, String)>) {
+    pub fn run_command(cmd: String, env: impl IntoIterator<Item = (String, String)>) {
         let mut command = Command::new(cmd);
 
         for (var, value) in env {
@@ -65,7 +67,7 @@ impl CallLoopData {
                 let mut ws = ws.get_mut();
                 ws.pop_container();
                 if let Some(window) = ws.get_focus().1 {
-                    self.toggle_window_focus(display, SERIAL_COUNTER.next_serial(), window.get());
+                    self.toggle_window_focus(SERIAL_COUNTER.next_serial(), window.get());
                 }
             }
             ContainerState::HasContainersOnly => {
@@ -100,7 +102,7 @@ impl CallLoopData {
                 let ws = ws.get();
 
                 if let Some(window) = ws.get_focus().1 {
-                    self.toggle_window_focus(display, SERIAL_COUNTER.next_serial(), window.get());
+                    self.toggle_window_focus(SERIAL_COUNTER.next_serial(), window.get());
                 }
             }
             ContainerState::HasWindows => {
@@ -108,7 +110,7 @@ impl CallLoopData {
                 let ws = ws.get();
 
                 if let Some(window) = ws.get_focus().1 {
-                    self.toggle_window_focus(display, SERIAL_COUNTER.next_serial(), window.get());
+                    self.toggle_window_focus(SERIAL_COUNTER.next_serial(), window.get());
                 }
                 debug!("Cannot remove non empty container");
             }
@@ -140,7 +142,6 @@ impl CallLoopData {
 
     pub fn handle_pointer_button<I: InputBackend>(
         &mut self,
-        dh: &DisplayHandle,
         event: &<I as InputBackend>::PointerButtonEvent,
     ) {
         let pointer = self.state.seat.get_pointer().unwrap();
@@ -168,7 +169,7 @@ impl CallLoopData {
                 {
                     let window = WindowWrap::from(window);
 
-                    if *self.state.mod_pressed.borrow() && window.is_floating() {
+                    if self.state.mod_pressed && window.is_floating() {
                         let pos = pointer.current_location();
                         let initial_window_location = (pos.x as i32, pos.y as i32).into();
                         let start_data = pointer.grab_start_data().unwrap();
@@ -188,7 +189,7 @@ impl CallLoopData {
                         let mut ws = ws.get_mut();
                         let container = ws.root().container_having_window(id).unwrap();
                         container.get_mut().set_focus(id);
-                        self.toggle_window_focus(dh, serial, window.get());
+                        self.toggle_window_focus(serial, window.get());
                         let focused_id = container.get().id;
                         ws.set_container_focused(focused_id);
                     }
@@ -210,7 +211,7 @@ impl CallLoopData {
         }
     }
 
-    fn toggle_window_focus(&mut self, dh: &DisplayHandle, serial: Serial, window: &Window) {
+    fn toggle_window_focus(&mut self, serial: Serial, window: &Window) {
         let keyboard = self.state.seat.get_keyboard().unwrap();
 
         self.state.space.windows().for_each(|window| {
@@ -248,7 +249,7 @@ impl CallLoopData {
         self.state.next_layout = Some(ContainerLayout::Vertical)
     }
 
-    pub fn move_focus(&mut self, direction: Direction, display: &DisplayHandle) {
+    pub fn move_focus(&mut self, direction: Direction) {
         let window = self.scan_window(direction);
 
         if let Some(window) = window {
@@ -262,7 +263,7 @@ impl CallLoopData {
                 .set_focus(WindowWrap::from(window.clone()).id());
             let focused_id = container.get().id;
             ws.set_container_focused(focused_id);
-            self.toggle_window_focus(display, serial, &window);
+            self.toggle_window_focus(serial, &window);
         }
     }
 

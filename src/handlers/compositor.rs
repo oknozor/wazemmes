@@ -9,7 +9,7 @@ use crate::backend::xwayland;
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::utils::{Logical, Point, Rectangle, Size};
+use smithay::utils::{Logical, Point, Rectangle, Serial, Size};
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     with_states, with_surface_tree_upward, CompositorHandler, CompositorState, TraversalAction,
@@ -19,7 +19,6 @@ use smithay::wayland::shell::xdg::{
     XdgPopupSurfaceRoleAttributes, XdgToplevelSurfaceRoleAttributes,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
-use smithay::utils::Serial;
 use smithay::{delegate_compositor, delegate_shm};
 use std::cell::RefCell;
 use std::sync::Mutex;

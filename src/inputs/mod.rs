@@ -10,18 +10,18 @@ use smithay::backend::input::{
 };
 use smithay::backend::session::auto::AutoSession;
 use smithay::backend::session::Session;
-use smithay::{delegate_primary_selection, delegate_seat};
 use smithay::desktop::WindowSurfaceType;
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::utils::{Logical, Point};
 use smithay::input::keyboard::{keysyms as xkb, FilterResult};
 use smithay::input::pointer::{CursorImageStatus, MotionEvent, PointerHandle};
 use smithay::input::{Seat, SeatHandler};
-use smithay::utils::SERIAL_COUNTER;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
+use smithay::reexports::wayland_server::{DisplayHandle, Resource};
+use smithay::utils::{Logical, Point, SERIAL_COUNTER};
 use smithay::wayland::data_device::set_data_device_focus;
-use smithay::wayland::primary_selection::{PrimarySelectionHandler, PrimarySelectionState, set_primary_focus};
-use smithay::reexports::wayland_server::Resource;
+use smithay::wayland::primary_selection::{
+    set_primary_focus, PrimarySelectionHandler, PrimarySelectionState,
+};
+use smithay::{delegate_primary_selection, delegate_seat};
 
 pub(crate) mod grabs;
 pub mod handlers;
@@ -99,9 +99,7 @@ impl InputHandler for CallLoopData {
                 SeatState::for_seat(&self.state.seat).set_pointer_pos(position);
                 self.state.pointer_motion(pointer, position, event.time());
             }
-            InputEvent::PointerButton { event, .. } => {
-                self.handle_pointer_button::<I>(&self.display.handle(), &event)
-            }
+            InputEvent::PointerButton { event, .. } => self.handle_pointer_button::<I>(&event),
             InputEvent::PointerAxis { event, .. } => {
                 let frame = handlers::basic_axis_frame::<I>(&event);
 
@@ -120,18 +118,18 @@ impl CallLoopData {
         event: <I as InputBackend>::KeyboardKeyEvent,
         session: Option<&mut AutoSession>,
     ) {
-        let action = self.keyboard_key_to_action::<I>( event);
+        let action = self.keyboard_key_to_action::<I>(event);
         if action != KeyAction::None {
             debug!("keyboard action triggered: {:?}", action)
         };
 
         match action {
-            KeyAction::Run(cmd, env) => Self::run(cmd, env),
+            KeyAction::Run(cmd, env) => Self::run_command(cmd, env),
             KeyAction::Close => self.close(display),
             KeyAction::LayoutVertical => self.set_layout_v(),
             KeyAction::LayoutHorizontal => self.set_layout_h(),
             KeyAction::MoveToWorkspace(num) => self.state.move_to_workspace(num, display),
-            KeyAction::MoveFocus(direction) => self.move_focus(direction, display),
+            KeyAction::MoveFocus(direction) => self.move_focus(direction),
             KeyAction::MoveWindow(direction) => self.move_window(direction, display),
             KeyAction::MoveContainer(direction) => self.move_container(direction),
             KeyAction::ToggleFloating => self.toggle_floating(),
@@ -161,15 +159,20 @@ impl CallLoopData {
         let serial = SERIAL_COUNTER.next_serial();
         let time = Event::time(&evt);
         let keyboard = self.state.seat.get_keyboard().unwrap();
-        let _mod_pressed = &self.state.mod_pressed;
-        let bindings = self.state.config.keybindings.clone();
+        let data = &mut self.state;
+        let bindings = &self.config.keybindings;
+
+        let mut mod_pressed = false;
 
         let action = keyboard
-            .input(&mut self.state, keycode, state, serial, time, |modifiers, handle| {
+            .input(data, keycode, state, serial, time, |modifiers, handle| {
                 let keysym = handle.modified_sym();
-
                 if state == KeyState::Pressed {
-                    let action: Option<FilterResult<KeyAction>> = self.state.config.keybindings
+                    if modifiers.alt {
+                        mod_pressed = true;
+                    }
+
+                    let action = bindings
                         .iter()
                         .find_map(|binding| binding.match_action(*modifiers, keysym))
                         .map(Action::into)
@@ -187,12 +190,13 @@ impl CallLoopData {
                         Some(action) => action,
                     }
                 } else {
+                    mod_pressed = false;
                     FilterResult::Forward
                 }
             })
             .unwrap_or(KeyAction::None);
 
-        debug!("Action triggered {:?}", action);
+        self.state.mod_pressed = mod_pressed;
         action
     }
 }
@@ -209,7 +213,6 @@ impl Wazemmes {
             .surface_under(position, WindowSurfaceType::all())
             .map(|(_, surface, location)| (surface, location));
 
-        let dh = self.display.clone();
         pointer.motion(
             self,
             under,
@@ -227,7 +230,9 @@ impl SeatHandler for Wazemmes {
     type KeyboardFocus = WlSurface;
     type PointerFocus = WlSurface;
 
-    fn seat_state(&mut self) -> &mut smithay::input::SeatState<Self> {&mut self.seat_state}
+    fn seat_state(&mut self) -> &mut smithay::input::SeatState<Self> {
+        &mut self.seat_state
+    }
 
     fn focus_changed(&mut self, seat: &Seat<Self>, surface: Option<&WlSurface>) {
         let dh = &self.display;
@@ -238,7 +243,7 @@ impl SeatHandler for Wazemmes {
         set_primary_focus(dh, seat, focus2);
     }
 
-    fn cursor_image(&mut self, seat: &Seat<Self>, image: CursorImageStatus) {
+    fn cursor_image(&mut self, _seat: &Seat<Self>, image: CursorImageStatus) {
         self.pointer_icon.on_new_cursor(image);
     }
 }
@@ -252,4 +257,3 @@ impl PrimarySelectionHandler for Wazemmes {
 }
 
 delegate_primary_selection!(Wazemmes);
-

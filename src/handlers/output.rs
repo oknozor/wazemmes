@@ -66,10 +66,7 @@ impl OutputHandler for CallLoopData {
         output_id: &OutputId,
         age: usize,
         pointer_image: Option<&Gles2Texture>,
-    ) -> Result<
-        Option<Vec<smithay::utils::Rectangle<i32, smithay::utils::Physical>>>,
-        smithay::backend::SwapBuffersError,
-    > {
+    ) -> Result<Option<Vec<Rectangle<i32, Physical>>>, smithay::backend::SwapBuffersError> {
         let mut elems: Vec<CustomElem> = Vec::new();
 
         let location = self

@@ -1,10 +1,11 @@
 use crate::backend::drawing::FLOATING_Z_INDEX;
 use crate::Wazemmes;
 use smithay::desktop::Window;
-use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::utils::{Logical, Point};
-use smithay::input::pointer::{AxisFrame, ButtonEvent, GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle};
+use smithay::input::pointer::{
+    AxisFrame, ButtonEvent, GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle,
+};
 use smithay::input::SeatHandler;
+use smithay::utils::{Logical, Point};
 
 pub struct MoveSurfaceGrab {
     pub start_data: GrabStartData<Wazemmes>,
@@ -21,7 +22,7 @@ impl PointerGrab<Wazemmes> for MoveSurfaceGrab {
         event: &MotionEvent,
     ) {
         // While the grab is active, no client has pointer focus
-        handle.motion(data, focus,  event);
+        handle.motion(data, focus, event);
 
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
@@ -31,7 +32,12 @@ impl PointerGrab<Wazemmes> for MoveSurfaceGrab {
             .map_window(&self.window, location, FLOATING_Z_INDEX, true);
     }
 
-    fn button(&mut self, data: &mut Wazemmes, handle: &mut PointerInnerHandle<'_, Wazemmes>, event: &ButtonEvent) {
+    fn button(
+        &mut self,
+        data: &mut Wazemmes,
+        handle: &mut PointerInnerHandle<'_, Wazemmes>,
+        event: &ButtonEvent,
+    ) {
         handle.button(data, event);
         if handle.current_pressed().is_empty() {
             // No more buttons are pressed, release the grab.
@@ -39,7 +45,12 @@ impl PointerGrab<Wazemmes> for MoveSurfaceGrab {
         }
     }
 
-    fn axis(&mut self, data: &mut Wazemmes, handle: &mut PointerInnerHandle<'_, Wazemmes>, details: AxisFrame) {
+    fn axis(
+        &mut self,
+        data: &mut Wazemmes,
+        handle: &mut PointerInnerHandle<'_, Wazemmes>,
+        details: AxisFrame,
+    ) {
         handle.axis(data, details)
     }
 

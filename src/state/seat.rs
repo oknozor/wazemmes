@@ -3,8 +3,8 @@ use std::collections::HashSet;
 
 use crate::Wazemmes;
 use smithay::backend::input::KeyState;
-use smithay::utils::{Logical, Point};
 use smithay::input::Seat;
+use smithay::utils::{Logical, Point};
 
 #[derive(Debug, Default)]
 pub struct SeatState {

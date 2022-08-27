@@ -15,7 +15,6 @@ use smithay::wayland::data_device::{
     ClientDndGrabHandler, DataDeviceHandler, ServerDndGrabHandler,
 };
 
-
 use smithay::{delegate_data_device, delegate_output};
 
 //

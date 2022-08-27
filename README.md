@@ -1,5 +1,7 @@
-# TODO
+# Wazemmes
+A (WIP) wayland tiling wm
 
+# Roadmap
 
 - [x] move focus
 - [x] gaps
@@ -7,18 +9,18 @@
   - [x] borders
   - [ ] window title
 - [x] floating window
-- [ ] fullscreen_window
+- [x] fullscreen_window
 - [ ] stack layout
-- [ ] configuration
-  - [ ] keybindings 
+- [x] configuration
+  - [x] keybindings 
   - [ ] criterias
 - [ ] ipc server
 - [ ] backend 
   - [x] udev
   - [x] winit
   - [ ] x11
-  - [ ] xwayland
+  - [~] xwayland
 - [ ] multi monitor
 - [ ] screenshot
 - [ ] xdg-desktop-portal
-- [ ] play Elden Ring
+- [ ] **play Elden Ring**

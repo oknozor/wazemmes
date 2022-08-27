@@ -4,19 +4,18 @@ use smithay::desktop::PopupKind;
 
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 
+use smithay::input::pointer::GrabStartData;
+use smithay::input::Seat;
 use smithay::reexports::wayland_server::protocol::wl_seat;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Resource;
-use smithay::input::{Seat};
+use smithay::utils::Serial;
 use smithay::wayland::shell::xdg::{
     Configure, PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
 };
-use smithay::input::pointer::GrabStartData;
-use smithay::utils::Serial;
 
 use crate::Wazemmes;
 use smithay::utils::SERIAL_COUNTER;
-use x11rb::protocol::xproto::ConnectionExt;
 
 impl XdgShellHandler for Wazemmes {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -24,6 +23,7 @@ impl XdgShellHandler for Wazemmes {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        println!("NEW TOPLEVEL");
         let workspace = self.get_current_workspace();
         let mut workspace = workspace.get_mut();
 

@@ -89,16 +89,15 @@ where
                         let damage = handler
                             .output_render(backend.renderer(), &output_id, age, None)
                             .unwrap();
+
                         backend.submit(damage.as_deref()).unwrap();
                     }
 
                     handler.send_frames(&output_id);
-
                     TimeoutAction::ToDuration(Duration::from_millis(16))
                 }
                 Err(winit::WinitError::WindowClosed) => {
                     handler.close_compositor();
-
                     TimeoutAction::Drop
                 }
             }
