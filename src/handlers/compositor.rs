@@ -1,4 +1,4 @@
-use crate::shell::window::WindowWrap;
+use crate::shell::windows::toplevel::WindowState;
 use crate::Wazemmes;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{
@@ -6,6 +6,7 @@ use smithay::desktop::{
 };
 
 use crate::backend::xwayland;
+use slog_scope::debug;
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::DisplayHandle;
@@ -112,72 +113,73 @@ fn ensure_initial_configure(
         },
         |_, _, _| true,
     );
-    if let Some(window) = space
-        .window_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-        .cloned()
-    {
-        let window = WindowWrap::from(window);
 
-        // send the initial configure if relevant
-        #[cfg_attr(not(feature = "xwayland"), allow(irrefutable_let_patterns))]
-        if let SurfaceKind::Xdg(ref toplevel) = window.get().toplevel() {
-            let (initial_configure_sent, configured) = with_states(surface, |states| {
-                let attributes = states
-                    .data_map
-                    .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
-                    .unwrap()
-                    .lock()
-                    .unwrap();
-
-                (attributes.initial_configure_sent, attributes.configured)
-            });
-
-            if initial_configure_sent && !configured {
-                // We need to check the initial size before storing it
-                // some client will send their initial size after configuration
-                let geometry = window.get().geometry();
-                if geometry.size.w != 0 && geometry.size.h != 0 {
-                    window.get_state().set_initial_geometry(geometry.size);
-                }
-            } else if !initial_configure_sent {
-                toplevel.send_configure();
-            } else if configured && !window.get_state().configured() {
-                let geometry = window.get().geometry();
-                window.get_state().set_initial_geometry(geometry.size);
-                with_states(surface, |states| {
-                    let attributes = states
+    if let Some(window) = space.window_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
+        if let Some(state) = window.user_data().get::<WindowState>() {
+            // send the initial configure if relevant
+            #[cfg_attr(not(feature = "xwayland"), allow(irrefutable_let_patterns))]
+            if let SurfaceKind::Xdg(ref toplevel) = window.toplevel() {
+                let (initial_configure_sent, configured) = with_states(surface, |states| {
+                    let mut attributes = states
                         .data_map
                         .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
                         .unwrap()
                         .lock()
                         .unwrap();
 
-                    if let Some(app_id) = &attributes.app_id {
-                        // TODO: configurable criteria
-                        if app_id == "onagre" {
-                            window.toggle_floating();
-                        }
-                    }
-
-                    window.get_state().set_configured();
+                    (attributes.initial_configure_sent, attributes.configured)
                 });
+
+                if initial_configure_sent && !configured {
+                    debug!("Save initial geometry");
+                    // We need to check the initial size before storing it
+                    // some client will send their initial size after configuration
+                    let geometry = window.geometry();
+                    if geometry.size.w != 0 && geometry.size.h != 0 {
+                        state.set_initial_geometry(geometry.size);
+                    }
+                } else if !initial_configure_sent {
+                    debug!("Send initial configure");
+                    toplevel.send_configure();
+                } else if configured && !state.configured() {
+                    let geometry = window.geometry();
+                    state.set_initial_geometry(geometry.size);
+                    state.set_configured();
+                    with_states(surface, |states| {
+                        let attributes = states
+                            .data_map
+                            .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
+                            .unwrap()
+                            .lock()
+                            .unwrap();
+
+                        if let Some(app_id) = &attributes.app_id {
+                            // TODO: configurable criteria
+                            if app_id == "onagre" {
+                                state.toggle_floating();
+                            }
+                        }
+
+                        debug!("Finalized window config");
+                    });
+                }
             }
+
+            with_states(surface, |states| {
+                let mut data = states
+                    .data_map
+                    .get::<RefCell<SurfaceData>>()
+                    .unwrap()
+                    .borrow_mut();
+
+                // Finish resizing.
+                if let ResizeState::WaitingForCommit(_) = data.resize_state {
+                    data.resize_state = ResizeState::NotResizing;
+                }
+            });
+
+            return;
         }
-
-        with_states(surface, |states| {
-            let mut data = states
-                .data_map
-                .get::<RefCell<SurfaceData>>()
-                .unwrap()
-                .borrow_mut();
-
-            // Finish resizing.
-            if let ResizeState::WaitingForCommit(_) = data.resize_state {
-                data.resize_state = ResizeState::NotResizing;
-            }
-        });
-
-        return;
     }
 
     if let Some(popup) = popups.find_popup(surface) {

@@ -13,6 +13,7 @@ use smithay::utils::{Logical, Physical, Point, Rectangle, Scale, Transform};
 
 mod glow;
 
+use crate::shell::drawable::Borders;
 use glow::{Program, Shader};
 
 pub const BLUE: (f32, f32, f32) = (26.0 / 255.0, 95.0 / 255.0, 205.0 / 255.0);
@@ -130,16 +131,35 @@ impl QuadElement {
     pub fn new(
         gl: &Gles2,
         output_geometry: Rectangle<f64, Physical>,
-        geometry: Rectangle<i32, Logical>,
+        border: &Borders,
         transform: Transform,
-        color: (f32, f32, f32),
-    ) -> Self {
-        Self {
-            transform,
-            pipeline: QuadPipeline::new(gl, color),
-            geometry,
-            output_geometry,
-        }
+    ) -> [Self; 4] {
+        [
+            Self {
+                transform,
+                pipeline: QuadPipeline::new(gl, border.color),
+                geometry: border.left,
+                output_geometry,
+            },
+            Self {
+                transform,
+                pipeline: QuadPipeline::new(gl, border.color),
+                geometry: border.right,
+                output_geometry,
+            },
+            Self {
+                transform,
+                pipeline: QuadPipeline::new(gl, border.color),
+                geometry: border.top,
+                output_geometry,
+            },
+            Self {
+                transform,
+                pipeline: QuadPipeline::new(gl, border.color),
+                geometry: border.bottom,
+                output_geometry,
+            },
+        ]
     }
 }
 

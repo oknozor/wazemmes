@@ -5,8 +5,8 @@ use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
 use crate::backend::xwayland::window::WinType;
-use crate::shell::window::WindowWrap;
-use crate::shell::x11_popup::X11Popup;
+use crate::shell::windows::toplevel::WindowWrap;
+use crate::shell::windows::xpopup::X11Popup;
 use crate::{Wazemmes, WorkspaceRef};
 use smithay::desktop::{Kind, Window, X11Surface};
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -172,8 +172,6 @@ impl X11State {
         ws: WorkspaceRef,
     ) -> Result<(), ReplyOrIdError> {
         debug!("X11: Got event {:?}", event);
-        self.needs_redraw = false;
-
         match event {
             Event::ConfigureRequest(r) => {
                 // Just grant the wish
@@ -314,8 +312,7 @@ impl X11State {
             _ => {
                 let popup = Window::new(Kind::X11(x11surface));
                 let loc = self.get_location(xwindow);
-                let parent = self.get_parent(xwindow);
-                debug!("xpopup_id={:?}, parent={}", loc, parent);
+                debug!("New Xpopup from XWindow {xwindow}");
                 container.push_xpopup(X11Popup::new(popup, loc));
             }
         }

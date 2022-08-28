@@ -23,10 +23,9 @@ impl XdgShellHandler for Wazemmes {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        println!("NEW TOPLEVEL");
         let workspace = self.get_current_workspace();
         let mut workspace = workspace.get_mut();
-
+        debug!("New toplevel window");
         {
             let container = if let Some(layout) = self.next_layout {
                 self.next_layout = None;
@@ -48,6 +47,7 @@ impl XdgShellHandler for Wazemmes {
 
             let serial = SERIAL_COUNTER.next_serial();
             handle.set_focus(self, Some(surface.wl_surface().clone()), serial);
+            workspace.needs_redraw = true;
         }
     }
 
@@ -97,7 +97,7 @@ impl XdgShellHandler for Wazemmes {
     fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {
         let ws = self.get_current_workspace();
         let mut ws = ws.get_mut();
-        ws.update_layout(&self.space)
+        ws.update_layout(&self.space);
     }
 }
 

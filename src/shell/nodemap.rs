@@ -1,3 +1,4 @@
+use slog_scope::debug;
 use smithay::utils::IsAlive;
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
@@ -6,7 +7,7 @@ use std::ops::Index;
 
 use crate::shell::container::ContainerRef;
 use crate::shell::node::Node;
-use crate::shell::window::WindowWrap;
+use crate::shell::windows::toplevel::WindowWrap;
 
 #[derive(Debug, Default)]
 pub struct NodeMap {
@@ -15,7 +16,7 @@ pub struct NodeMap {
     // Node ids by their drawing order
     pub spine: Vec<u32>,
     // Store the id of the focused window
-    pub focus_idx: Option<usize>,
+    focus_idx: Option<usize>,
 }
 
 impl Index<usize> for NodeMap {
@@ -77,19 +78,23 @@ impl NodeMap {
         drained
     }
 
-    pub fn remove_dead_windows(&mut self) {
+    pub fn remove_dead_windows(&mut self) -> bool {
         let ids: Vec<u32> = self
             .items
             .iter()
             .filter_map(|(_k, v)| v.try_into().ok())
-            .filter(|window: &WindowWrap| !window.get().alive())
+            .filter(|window: &WindowWrap| !window.inner().alive())
             .map(|window| window.id())
             .collect();
+
+        let redraw = if ids.is_empty() { false } else { true };
 
         for id in ids {
             self.spine.drain_filter(|id_| id == *id_);
             let _node = self.items.remove(&id).unwrap();
         }
+
+        redraw
     }
 
     pub fn drain_all(&mut self) -> Vec<(u32, Node)> {
@@ -141,7 +146,7 @@ impl NodeMap {
         self.spine.push(id);
 
         if !node.is_container() {
-            self.focus_idx = Some(self.spine.len() - 1);
+            self.set_focus_index(self.spine.len() - 1);
         }
 
         self.items.insert(id, node);
@@ -157,7 +162,7 @@ impl NodeMap {
             self.spine.insert(index, node.id());
 
             if !node.is_container() {
-                self.focus_idx = Some(index);
+                self.set_focus_index(index);
             }
 
             self.items.insert(node.id(), node);
@@ -175,7 +180,7 @@ impl NodeMap {
             self.spine.insert(index, node.id());
 
             if !node.is_container() {
-                self.focus_idx = Some(index);
+                self.set_focus_index(index);
             }
 
             self.items.insert(node.id(), node);
@@ -222,11 +227,15 @@ impl NodeMap {
             if self.spine.is_empty() {
                 self.focus_idx = None
             } else {
-                self.focus_idx = self.spine[..idx]
+                let new_focus = self.spine[..idx]
                     .iter()
                     .enumerate()
                     .rfind(|(_idx, id)| matches!(self.items.get(id), Some(Node::Window(_))))
                     .map(|(idx, _)| idx);
+
+                if let Some(new_focus) = new_focus {
+                    self.set_focus_index(new_focus)
+                }
             }
             Some(id)
         } else {
@@ -235,16 +244,26 @@ impl NodeMap {
     }
 
     pub fn set_focus(&mut self, id: u32) {
-        self.focus_idx = self
+        let new_focus = self
             .spine
             .iter()
             .enumerate()
             .find(|(_, id_)| **id_ == id)
             .map(|(idx, _)| idx);
+
+        if let Some(new_focus) = new_focus {
+            self.set_focus_index(new_focus);
+        }
     }
 
     pub fn get_focused(&self) -> Option<&Node> {
         self.focus_idx.map(|idx| &self[idx])
+    }
+
+    fn set_focus_index(&mut self, idx: usize) {
+        debug!("Updating focus index={}", idx);
+        debug_assert!(self.spine.get(idx).is_some());
+        self.focus_idx = Some(idx)
     }
 
     fn spine_index(&mut self, id: u32) -> Option<usize> {

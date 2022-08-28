@@ -1,10 +1,10 @@
 use crate::backend::{NewOutputDescriptor, OutputHandler, OutputId};
-use crate::border::{QuadElement, BLUE, RED};
+use crate::border::QuadElement;
 use crate::draw::pointer::PointerElement;
-use crate::shell::border::GetBorders;
-use crate::shell::node::Node;
+use crate::shell::drawable::Borders;
 use crate::state::output::OutputState;
 use crate::{BackendState, CallLoopData, Wazemmes};
+use slog_scope::debug;
 use smithay::backend::renderer::gles2::{Gles2Renderer, Gles2Texture};
 use smithay::desktop::space::SurfaceTree;
 use smithay::utils::{Physical, Rectangle, Transform};
@@ -97,32 +97,33 @@ impl OutputHandler for CallLoopData {
 
         let ws = self.state.get_current_workspace();
         let mut ws = ws.get_mut();
-        let output_geometry = ws.get_output_geometry_f64(&self.state.space);
-        let (container, window) = ws.get_focus();
-
-        if let (Some(geometry), Some(window)) = (output_geometry, window) {
-            // Draw borders only if current layer is not a window fullscreen layer
-            if !matches!(ws.fullscreen_layer, Some(Node::Window(_))) {
-                self.draw_border(container, renderer, &mut elems, geometry, RED);
-                self.draw_border(window, renderer, &mut elems, geometry, BLUE);
-            }
-        }
 
         if let Some(x11) = &mut self.state.x11_state {
             if x11.needs_redraw {
-                println!("X11 update");
+                debug!("X11 Layout update");
                 ws.update_layout(&self.state.space);
                 x11.needs_redraw = false;
             }
         }
 
         if ws.needs_redraw {
-            println!("Redraw");
+            debug!("Workspace redraw");
+            let (x, w) = ws.get_focus();
+
             ws.redraw(
                 &mut self.state.space,
                 &self.state.display,
                 self.state.x11_state.as_mut(),
             );
+
+            ws.update_borders(&self.state.space);
+        }
+
+        let (container, window) = ws.get_focus();
+        let output_geometry = ws.get_output_geometry_f64(&self.state.space);
+
+        if let (Some(geometry), Some(window)) = (output_geometry, window) {
+            self.draw_border(ws.borders.as_slice(), renderer, &mut elems, geometry);
         }
 
         let output_state = OutputState::for_output(&output);
@@ -181,50 +182,23 @@ impl CallLoopData {
         }
     }
 
-    fn draw_border<T: GetBorders>(
+    fn draw_border(
         &mut self,
-        node: T,
+        borders: &[Borders],
         renderer: &mut Gles2Renderer,
         elems: &mut Vec<CustomElem>,
         geometry: Rectangle<f64, Physical>,
-        color: (f32, f32, f32),
     ) {
-        if let Some(borders) = node.get_borders(&self.state.space) {
-            let transform = self.transform_custom_element();
-
+        let transform = self.transform_custom_element();
+        for border in borders {
             renderer
                 .with_context(|_renderer, gles| {
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        geometry,
-                        borders.left,
-                        transform,
-                        color,
-                    )));
-
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        geometry,
-                        borders.top,
-                        transform,
-                        color,
-                    )));
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        geometry,
-                        borders.right,
-                        transform,
-                        color,
-                    )));
-                    elems.push(CustomElem::from(QuadElement::new(
-                        gles,
-                        geometry,
-                        borders.bottom,
-                        transform,
-                        color,
-                    )));
+                    let borders = QuadElement::new(gles, geometry, border, transform)
+                        .into_iter()
+                        .map(CustomElem::from);
+                    elems.extend(borders);
                 })
-                .unwrap()
+                .expect("Failed to render borders")
         }
     }
 }

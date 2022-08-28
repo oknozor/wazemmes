@@ -1,5 +1,5 @@
 use crate::shell::container::ContainerRef;
-use crate::shell::window::WindowWrap;
+use crate::shell::windows::toplevel::WindowWrap;
 
 #[derive(Debug, Clone)]
 pub enum Node {

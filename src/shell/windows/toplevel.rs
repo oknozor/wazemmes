@@ -1,7 +1,7 @@
 use crate::backend::drawing::{FLOATING_Z_INDEX, TILING_Z_INDEX};
 use crate::backend::xwayland::X11State;
+use crate::shell::drawable::{Border, Borders};
 use crate::shell::node;
-use slog_scope::debug;
 use smithay::desktop::{Kind, Space, Window};
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -10,6 +10,7 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::compositor;
 use smithay::wayland::shell::xdg::{ToplevelSurface, XdgToplevelSurfaceRoleAttributes};
 use std::cell::RefCell;
+use std::fmt::Debug;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone)]
@@ -20,19 +21,19 @@ pub struct WindowState {
     initial_size: RefCell<Size<i32, Logical>>,
     size: RefCell<Size<i32, Logical>>,
     loc: RefCell<Point<i32, Logical>>,
-    needs_redraw: RefCell<bool>,
+    borders: RefCell<Borders>,
 }
 
 impl WindowState {
     fn new() -> Self {
-        Self {
+        WindowState {
             id: RefCell::new(node::id::next()),
             floating: RefCell::new(false),
             configured: RefCell::new(false),
             initial_size: RefCell::new(Default::default()),
             size: RefCell::new(Default::default()),
             loc: RefCell::new(Default::default()),
-            needs_redraw: RefCell::new(false),
+            borders: RefCell::new(Borders::default()),
         }
     }
 
@@ -60,13 +61,13 @@ impl WindowState {
         self.initial_size.replace(size);
     }
 
-    fn toggle_floating(&self) {
-        debug!(
-            "(WindowState) - Floating toggle for window[{}]",
-            *self.id.borrow()
-        );
+    pub fn toggle_floating(&self) {
         let current = *self.floating.borrow();
         self.floating.replace(!current);
+    }
+
+    pub fn borders(&self) -> Borders {
+        self.borders.borrow().clone()
     }
 }
 
@@ -95,7 +96,7 @@ impl WindowWrap {
         self.update_loc_and_size(size, location)
     }
 
-    pub fn toggle_fullscreen(&self, geometry: Rectangle<i32, Logical>) {
+    pub fn set_fullscreen(&self, geometry: Rectangle<i32, Logical>) {
         self.update_loc_and_size(Some(geometry.size), geometry.loc);
     }
 
@@ -120,7 +121,13 @@ impl WindowWrap {
     }
 
     pub fn id(&self) -> u32 {
-        self.inner.user_data().get::<WindowState>().unwrap().id()
+        *self
+            .inner
+            .user_data()
+            .get::<WindowState>()
+            .unwrap()
+            .id
+            .borrow()
     }
 
     pub fn wl_id(&self) -> u32 {
@@ -131,14 +138,13 @@ impl WindowWrap {
         *self.get_state().loc.borrow()
     }
 
-    pub fn get(&self) -> &Window {
+    pub fn inner(&self) -> &Window {
         &self.inner
     }
 
     pub fn toplevel(&self) -> Option<&ToplevelSurface> {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => Some(toplevel),
-            // TODO: What to do here?
             Kind::X11(_xsurface) => None,
         }
     }
@@ -154,7 +160,6 @@ impl WindowWrap {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => {
                 toplevel.with_pending_state(|state| {
-                    state.states.set(xdg_toplevel::State::Resizing);
                     state.size = Some(self.size());
                 });
 
@@ -173,8 +178,8 @@ impl WindowWrap {
 
     pub fn update_loc_and_size<S, P>(&self, size: Option<S>, location: P) -> bool
     where
-        S: Into<Size<i32, Logical>>,
-        P: Into<Point<i32, Logical>>,
+        S: Into<Size<i32, Logical>> + Debug,
+        P: Into<Point<i32, Logical>> + Debug,
     {
         let state = self.get_state();
         let new_location = location.into();
@@ -199,10 +204,9 @@ impl WindowWrap {
         };
 
         if loc_changed || size_changed {
-            state.needs_redraw.replace(true);
+            self.get_state().borders.replace(self.make_borders());
             true
         } else {
-            state.needs_redraw.replace(false);
             false
         }
     }
@@ -215,7 +219,6 @@ impl WindowWrap {
     }
 
     pub fn toggle_floating(&self) {
-        debug!("(WindowWrap) - Floating toggle  for window[{}]", self.id());
         self.get_state().toggle_floating();
     }
 
@@ -249,17 +252,12 @@ impl WindowWrap {
     pub fn loc(&self) -> Point<i32, Logical> {
         *self.get_state().loc.borrow()
     }
-
-    pub fn needs_redraw(&self) -> bool {
-        *self.get_state().needs_redraw.borrow()
-    }
 }
 
 impl From<ToplevelSurface> for WindowWrap {
     fn from(toplevel: ToplevelSurface) -> Self {
         let window = Window::new(Kind::Xdg(toplevel));
         window.user_data().insert_if_missing(WindowState::new);
-
         WindowWrap { inner: window }
     }
 }
@@ -273,7 +271,6 @@ impl From<Window> for WindowWrap {
 impl WindowWrap {
     pub fn from_x11_window(window: Window) -> WindowWrap {
         window.user_data().insert_if_missing(WindowState::new);
-
         WindowWrap { inner: window }
     }
 }

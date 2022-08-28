@@ -11,12 +11,13 @@ use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::config::CONFIG;
+use crate::shell::drawable::{Border, Borders};
 use crate::shell::node;
 use crate::shell::node::Node;
 
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::WindowWrap;
-use crate::shell::x11_popup::X11Popup;
+use crate::shell::windows::toplevel::WindowWrap;
+use crate::shell::windows::xpopup::X11Popup;
 
 #[derive(Debug, Clone)]
 pub struct ContainerRef {
@@ -117,7 +118,7 @@ impl Container {
         self.nodes.get_focused()
     }
 
-    pub fn toggle_fullscreen(&mut self, output_geometry: Rectangle<i32, Logical>) {
+    pub fn set_fullscreen_loc_and_size(&mut self, output_geometry: Rectangle<i32, Logical>) {
         let gaps = CONFIG.gaps as i32;
         self.location = (output_geometry.loc.x + gaps, output_geometry.loc.y + gaps).into();
         self.size = (
@@ -242,13 +243,13 @@ impl Container {
 
     pub fn close_window(&mut self, x11_state: Option<&mut X11State>) {
         let idx = self.get_focused_window().map(|window| {
-            debug!("Closing window({})", window.id());
+            debug!("Closing window({:?})", window.id());
             window.send_close(x11_state);
             window.id()
         });
 
         if let Some(id) = idx {
-            debug!("Removing window({}) from the tree", id);
+            debug!("Removing window({:?}) from the tree", id);
             let _surface = self.nodes.remove(&id);
         }
     }
@@ -285,15 +286,13 @@ impl Container {
     }
 
     pub fn update_layout(&mut self, output_geometry: Rectangle<i32, Logical>) -> bool {
-        self.nodes.remove_dead_windows();
+        let mut redraw = self.nodes.remove_dead_windows();
 
         if self.nodes.spine.is_empty() {
             return false;
         }
 
         self.reparent_orphans();
-
-        let mut redraw = false;
 
         if let Some(size) = self.get_child_size() {
             let mut tiling_index = 0;

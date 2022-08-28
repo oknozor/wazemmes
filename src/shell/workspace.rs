@@ -1,11 +1,12 @@
 use crate::backend::xwayland::X11State;
 use crate::config::CONFIG;
 use crate::shell::container::{Container, ContainerLayout, ContainerRef};
+use crate::shell::drawable::{Border, Borders};
 use crate::shell::node;
 use crate::shell::node::Node;
 use crate::shell::nodemap::NodeMap;
-use crate::shell::window::WindowWrap;
-use slog_scope::warn;
+use crate::shell::windows::toplevel::WindowWrap;
+use slog_scope::{debug, warn};
 use smithay::desktop::Space;
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Physical, Rectangle};
@@ -50,6 +51,7 @@ pub struct Workspace {
     root: ContainerRef,
     focus: ContainerRef,
     pub(crate) needs_redraw: bool,
+    pub borders: Vec<Borders>,
 }
 
 impl Workspace {
@@ -77,6 +79,7 @@ impl Workspace {
             focus,
             fullscreen_layer: None,
             needs_redraw: false,
+            borders: vec![],
         }
     }
 
@@ -87,26 +90,34 @@ impl Workspace {
         self.needs_redraw = root.update_layout(geometry);
     }
 
-    pub fn redraw(&self, space: &mut Space, dh: &DisplayHandle, x11_state: Option<&mut X11State>) {
-        self.unmap_all(space);
+    pub fn redraw(
+        &mut self,
+        space: &mut Space,
+        dh: &DisplayHandle,
+        x11_state: Option<&mut X11State>,
+    ) {
         let geometry = space.output_geometry(&self.output).expect("Geometry");
+        self.unmap_all(space);
 
         if let Some(layer) = &self.fullscreen_layer {
             match layer {
                 Node::Container(container) => {
-                    let mut container = container.get_mut();
-                    container.update_layout(geometry);
+                    debug!("Redraw: FullScreen Container");
+                    let mut container = container.get();
+                    container.redraw(space, x11_state);
                 }
-                Node::Window(window) => window.toggle_fullscreen(geometry),
+                Node::Window(window) => {
+                    debug!("Redraw: FullScreen Window");
+                    window.set_fullscreen(geometry);
+                    window.map(space, x11_state, true);
+                }
             }
         } else {
+            debug!("Redraw: Root Container");
             let mut root = self.root.get_mut();
             root.update_layout(geometry);
+            root.redraw(space, x11_state);
         }
-
-        let root = self.root.get();
-        root.redraw(space, x11_state);
-        space.refresh(dh)
     }
 
     pub fn root(&self) -> ContainerRef {
@@ -146,12 +157,17 @@ impl Workspace {
         }
     }
 
-    pub fn set_container_focused(&mut self, id: u32) {
-        if let Some(container) = self.find_container_by_id(&id) {
-            self.focus = container;
-        } else {
-            warn!("Tried to set container focus but container with id [{id}] was not found")
-        }
+    pub fn set_container_focused(&mut self, container: &ContainerRef) {
+        self.focus = container.clone();
+    }
+
+    pub fn set_container_and_window_focus(
+        &mut self,
+        container: &ContainerRef,
+        window: &WindowWrap,
+    ) {
+        self.focus = container.clone();
+        container.get_mut().set_focus(window.id());
     }
 
     pub fn flatten_window(&self) -> Vec<WindowWrap> {
@@ -166,9 +182,10 @@ impl Workspace {
         windows
     }
 
-    pub fn unmap_all(&self, space: &mut Space) {
+    pub fn unmap_all(&mut self, space: &mut Space) {
+        self.borders.drain(..);
         for window in self.flatten_window() {
-            space.unmap_window(window.get());
+            space.unmap_window(window.inner());
         }
     }
 
@@ -195,5 +212,39 @@ impl Workspace {
             let scale = self.output.current_scale().fractional_scale();
             geometry.to_f64().to_physical_precise_up(scale)
         })
+    }
+
+    pub fn update_borders(&mut self, space: &Space) {
+        debug!("Updating workspace borders");
+        match &self.fullscreen_layer {
+            Some(Node::Container(container)) => {
+                let container = container.get();
+                let container_borders = container.make_borders();
+                let window_borders = container
+                    .get_focused_window()
+                    .map(|window| window.get_state().borders());
+
+                self.borders = vec![container_borders];
+
+                if let Some(window_borders) = window_borders {
+                    self.borders.push(window_borders);
+                }
+            }
+            Some(Node::Window(_)) => {
+                // No border for window fullscreen mode
+            }
+            None => {
+                let (container, window) = self.get_focus();
+                let container = container.get();
+                let container_borders = container.make_borders();
+                let window_borders = window.map(|window| window.get_state().borders());
+
+                self.borders = vec![container_borders];
+
+                if let Some(window_borders) = window_borders {
+                    self.borders.push(window_borders);
+                }
+            }
+        }
     }
 }

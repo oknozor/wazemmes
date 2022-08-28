@@ -1,15 +1,12 @@
 use crate::shell::workspace::WorkspaceRef;
 use crate::Wazemmes;
 
-pub mod border;
 pub mod container;
+pub mod drawable;
 pub mod node;
 pub mod nodemap;
-pub mod window;
+pub mod windows;
 pub mod workspace;
-
-#[cfg(feature = "xwayland")]
-pub mod x11_popup;
 
 impl Wazemmes {
     pub fn get_current_workspace(&self) -> WorkspaceRef {
@@ -27,7 +24,7 @@ impl Wazemmes {
         }
 
         let current_workspace = self.get_current_workspace();
-        let current_workspace = current_workspace.get_mut();
+        let mut current_workspace = current_workspace.get_mut();
         current_workspace.unmap_all(&mut self.space);
         self.current_workspace = num;
 
