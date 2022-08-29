@@ -19,14 +19,6 @@ pub struct WorkspaceRef {
     inner: Rc<RefCell<Workspace>>,
 }
 
-impl From<Workspace> for WorkspaceRef {
-    fn from(workspace: Workspace) -> Self {
-        WorkspaceRef {
-            inner: Rc::new(RefCell::new(workspace)),
-        }
-    }
-}
-
 impl WorkspaceRef {
     pub fn new(output: Output, space: &Space) -> Self {
         let geometry = space.output_geometry(&output).unwrap();
@@ -115,9 +107,10 @@ impl Workspace {
         } else {
             debug!("Redraw: Root Container");
             let mut root = self.root.get_mut();
-            root.update_layout(geometry);
             root.redraw(space, x11_state);
         }
+
+        self.needs_redraw = false;
     }
 
     pub fn root(&self) -> ContainerRef {

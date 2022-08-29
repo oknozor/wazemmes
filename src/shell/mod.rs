@@ -34,7 +34,11 @@ impl Wazemmes {
                 let workspace = WorkspaceRef::new(output.clone(), &self.space);
                 self.workspaces.insert(num, workspace);
             }
-            Some(workspace) => workspace.get_mut().update_layout(&self.space),
+            Some(workspace) => {
+                let mut workspace = workspace.get_mut();
+                workspace.update_layout(&self.space);
+                workspace.needs_redraw = true;
+            },
         };
     }
 }

@@ -20,7 +20,11 @@ use std::process::{Command, Stdio};
 
 impl CallLoopData {
     pub fn run_command(cmd: String, env: impl IntoIterator<Item = (String, String)>) {
-        let mut command = Command::new(cmd);
+        let cmd = cmd.split_whitespace().collect::<Vec<&str>>();
+        let mut command = Command::new(&cmd[0]);
+        if cmd.len() > 1 {
+            command.args(&cmd[1..]);
+        }
 
         for (var, value) in env {
             command.env(var, value);

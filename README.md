@@ -23,4 +23,5 @@ A (WIP) wayland tiling wm
 - [ ] multi monitor
 - [ ] screenshot
 - [ ] xdg-desktop-portal
+- [ ] clipboard
 - [ ] **play Elden Ring**

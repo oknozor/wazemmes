@@ -151,7 +151,7 @@ where
         xkb::KEY_NoSymbol => match xkb::keysym_from_name(&name, xkb::KEYSYM_CASE_INSENSITIVE) {
             xkb::KEY_NoSymbol => Err(<D::Error as Error>::invalid_value(
                 Unexpected::Str(&name),
-                &"Invalid keysym",
+                &"xkb keysym",
             )),
             key => {
                 slog_scope::warn!(

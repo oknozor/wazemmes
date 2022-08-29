@@ -14,36 +14,28 @@ pub struct NodeMap {
     // The node map
     pub items: HashMap<u32, Node>,
     // Node ids by their drawing order
+    // TODO: consider introducing a NodeIdType here
     pub spine: Vec<u32>,
     // Store the id of the focused window
     focus_idx: Option<usize>,
 }
 
-impl Index<usize> for NodeMap {
-    type Output = Node;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        let id = self.spine[index];
-        self.items.get(&id).expect("Unreachable error")
-    }
-}
-
 impl NodeMap {
-    pub fn iter_spine(&self) -> impl Iterator<Item = (&u32, &Node)> {
+    pub fn iter_spine(&self) -> impl Iterator<Item=(&u32, &Node)> {
         self.spine.iter().map(|id| {
             let node = self.items.get(id).unwrap();
             (id, node)
         })
     }
 
-    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWrap> {
+    pub fn iter_windows(&self) -> impl Iterator<Item=&WindowWrap> {
         self.items.values().filter_map(|node| match node {
             Node::Window(w) => Some(w),
             _ => None,
         })
     }
 
-    pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
+    pub fn iter_containers(&self) -> impl Iterator<Item=&ContainerRef> {
         self.items.values().filter_map(|node| match node {
             Node::Container(c) => Some(c),
             _ => None,
@@ -257,7 +249,14 @@ impl NodeMap {
     }
 
     pub fn get_focused(&self) -> Option<&Node> {
-        self.focus_idx.map(|idx| &self[idx])
+        self.focus_idx
+            .and_then(|idx| self.spine.get(idx))
+            .and_then(|id| {
+                self.items.get(id)
+            }).or_else(||
+            self.iter_windows()
+                .last()
+                .and_then(|window| self.items.get(&window.id())))
     }
 
     fn set_focus_index(&mut self, idx: usize) {

@@ -286,6 +286,7 @@ impl Container {
     }
 
     pub fn update_layout(&mut self, output_geometry: Rectangle<i32, Logical>) -> bool {
+        debug!("Update Layout for container: id={}", self.id);
         let mut redraw = self.nodes.remove_dead_windows();
 
         if self.nodes.spine.is_empty() {

@@ -1,5 +1,5 @@
 use crate::shell::windows::toplevel::WindowState;
-use crate::Wazemmes;
+use crate::{Wazemmes, WorkspaceRef};
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{
     layer_map_for_output, Kind as SurfaceKind, PopupKind, PopupManager, Space, WindowSurfaceType,
@@ -21,8 +21,9 @@ use smithay::wayland::shell::xdg::{
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{delegate_compositor, delegate_shm};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::sync::Mutex;
+use crate::shell::workspace::Workspace;
 
 /// State of the resize operation.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -91,8 +92,9 @@ impl CompositorHandler for Wazemmes {
 
         self.space.commit(surface);
         self.popups.commit(surface);
-
-        ensure_initial_configure(&self.display, surface, &mut self.space, &mut self.popups);
+        let workspace = self.get_current_workspace();
+        let mut workspace = workspace.get_mut();
+        ensure_initial_configure(&self.display, surface, &mut self.space, &mut self.popups, workspace);
     }
 }
 
@@ -101,6 +103,7 @@ fn ensure_initial_configure(
     surface: &WlSurface,
     space: &mut Space,
     popups: &mut PopupManager,
+    mut workspace: RefMut<Workspace>,
 ) {
     with_surface_tree_upward(
         surface,
@@ -162,6 +165,8 @@ fn ensure_initial_configure(
 
                         debug!("Finalized window config");
                     });
+
+                    workspace.update_layout(space);
                 }
             }
 
