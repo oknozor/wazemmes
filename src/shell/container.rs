@@ -11,7 +11,6 @@ use smithay::wayland::output::Output;
 use smithay::wayland::shell::xdg::ToplevelSurface;
 
 use crate::config::CONFIG;
-use crate::shell::drawable::{Border, Borders};
 use crate::shell::node;
 use crate::shell::node::Node;
 

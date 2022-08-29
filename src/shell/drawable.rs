@@ -1,8 +1,7 @@
 use crate::border::{BLUE, RED};
 use crate::shell::container::Container;
-use crate::shell::node::Node;
 use crate::shell::windows::toplevel::WindowWrap;
-use smithay::utils::{Logical, Point, Rectangle, Size};
+use smithay::utils::{Logical, Rectangle};
 
 pub trait Border {
     fn make_borders(&self) -> Borders;

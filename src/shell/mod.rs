@@ -38,7 +38,7 @@ impl Wazemmes {
                 let mut workspace = workspace.get_mut();
                 workspace.update_layout(&self.space);
                 workspace.needs_redraw = true;
-            },
+            }
         };
     }
 }

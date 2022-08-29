@@ -1,11 +1,12 @@
 use crate::shell::windows::toplevel::WindowState;
-use crate::{Wazemmes, WorkspaceRef};
+use crate::Wazemmes;
 use smithay::backend::renderer::utils::on_commit_buffer_handler;
 use smithay::desktop::{
     layer_map_for_output, Kind as SurfaceKind, PopupKind, PopupManager, Space, WindowSurfaceType,
 };
 
 use crate::backend::xwayland;
+use crate::shell::workspace::Workspace;
 use slog_scope::debug;
 use smithay::reexports::wayland_server::protocol::wl_buffer;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
@@ -23,7 +24,6 @@ use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::{delegate_compositor, delegate_shm};
 use std::cell::{RefCell, RefMut};
 use std::sync::Mutex;
-use crate::shell::workspace::Workspace;
 
 /// State of the resize operation.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -93,8 +93,15 @@ impl CompositorHandler for Wazemmes {
         self.space.commit(surface);
         self.popups.commit(surface);
         let workspace = self.get_current_workspace();
-        let mut workspace = workspace.get_mut();
-        ensure_initial_configure(&self.display, surface, &mut self.space, &mut self.popups, workspace);
+        let workspace = workspace.get_mut();
+
+        ensure_initial_configure(
+            &self.display,
+            surface,
+            &mut self.space,
+            &mut self.popups,
+            workspace,
+        );
     }
 }
 
@@ -123,7 +130,7 @@ fn ensure_initial_configure(
             #[cfg_attr(not(feature = "xwayland"), allow(irrefutable_let_patterns))]
             if let SurfaceKind::Xdg(ref toplevel) = window.toplevel() {
                 let (initial_configure_sent, configured) = with_states(surface, |states| {
-                    let mut attributes = states
+                    let attributes = states
                         .data_map
                         .get::<Mutex<XdgToplevelSurfaceRoleAttributes>>()
                         .unwrap()

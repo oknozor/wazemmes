@@ -3,7 +3,6 @@ use crate::backend::xwayland::X11State;
 use crate::shell::drawable::{Border, Borders};
 use crate::shell::node;
 use smithay::desktop::{Kind, Space, Window};
-use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::Resource;
 use smithay::utils::{Logical, Point, Rectangle, Size};

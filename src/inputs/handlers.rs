@@ -3,7 +3,6 @@ use crate::shell::container::{ContainerLayout, ContainerState};
 use crate::shell::node::Node;
 use crate::state::CallLoopData;
 
-use crate::shell::drawable::Border;
 use crate::shell::windows::toplevel::{WindowState, WindowWrap};
 use slog_scope::{debug, warn};
 use smithay::backend::input::{
@@ -197,7 +196,7 @@ impl CallLoopData {
                         let container = ws.root().container_having_window(id);
                         if let Some(container) = container {
                             ws.set_container_and_window_focus(&container, &window);
-                            ws.update_borders(&self.state.space);
+                            ws.update_borders();
                             self.toggle_window_focus(serial, window.inner());
                         }
                     }
@@ -266,10 +265,10 @@ impl CallLoopData {
             let ws = self.state.get_current_workspace();
             let mut ws = ws.get_mut();
             let container = ws.root().container_having_window(id).unwrap();
-            let window = WindowWrap::from(window.clone());
+            let window = WindowWrap::from(window);
             ws.set_container_and_window_focus(&container, &window);
-            self.toggle_window_focus(serial, &window.inner());
-            ws.update_borders(&self.state.space);
+            self.toggle_window_focus(serial, window.inner());
+            ws.update_borders();
         }
     }
 
@@ -349,7 +348,7 @@ impl CallLoopData {
         let ws = self.state.get_current_workspace();
         let mut ws = ws.get_mut();
         ws.update_layout(&self.state.space);
-        ws.update_borders(&self.state.space);
+        ws.update_borders();
     }
 
     pub fn move_container(&self, _direction: Direction) {
@@ -368,7 +367,7 @@ impl CallLoopData {
             ws.needs_redraw = redraw;
         }
 
-        ws.update_borders(&self.state.space);
+        ws.update_borders();
     }
 
     pub fn toggle_fullscreen_window(&mut self) {
@@ -404,7 +403,7 @@ impl CallLoopData {
             ws.fullscreen_layer = Some(Node::Container(container));
         }
 
-        ws.update_borders(&self.state.space);
+        ws.update_borders();
         ws.needs_redraw = true
     }
 

@@ -6,9 +6,8 @@ use crate::shell::node;
 use crate::shell::node::Node;
 use crate::shell::nodemap::NodeMap;
 use crate::shell::windows::toplevel::WindowWrap;
-use slog_scope::{debug, warn};
+use slog_scope::debug;
 use smithay::desktop::Space;
-use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::{Logical, Physical, Rectangle};
 use smithay::wayland::output::Output;
 use std::cell::{Ref, RefCell, RefMut};
@@ -82,12 +81,7 @@ impl Workspace {
         self.needs_redraw = root.update_layout(geometry);
     }
 
-    pub fn redraw(
-        &mut self,
-        space: &mut Space,
-        dh: &DisplayHandle,
-        x11_state: Option<&mut X11State>,
-    ) {
+    pub fn redraw(&mut self, space: &mut Space, x11_state: Option<&mut X11State>) {
         let geometry = space.output_geometry(&self.output).expect("Geometry");
         self.unmap_all(space);
 
@@ -95,7 +89,7 @@ impl Workspace {
             match layer {
                 Node::Container(container) => {
                     debug!("Redraw: FullScreen Container");
-                    let mut container = container.get();
+                    let container = container.get();
                     container.redraw(space, x11_state);
                 }
                 Node::Window(window) => {
@@ -106,7 +100,7 @@ impl Workspace {
             }
         } else {
             debug!("Redraw: Root Container");
-            let mut root = self.root.get_mut();
+            let root = self.root.get();
             root.redraw(space, x11_state);
         }
 
@@ -207,7 +201,7 @@ impl Workspace {
         })
     }
 
-    pub fn update_borders(&mut self, space: &Space) {
+    pub fn update_borders(&mut self) {
         debug!("Updating workspace borders");
         match &self.fullscreen_layer {
             Some(Node::Container(container)) => {

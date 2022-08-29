@@ -3,7 +3,6 @@ use smithay::utils::IsAlive;
 use std::collections::hash_map::Iter;
 use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::ops::Index;
 
 use crate::shell::container::ContainerRef;
 use crate::shell::node::Node;
@@ -21,21 +20,21 @@ pub struct NodeMap {
 }
 
 impl NodeMap {
-    pub fn iter_spine(&self) -> impl Iterator<Item=(&u32, &Node)> {
+    pub fn iter_spine(&self) -> impl Iterator<Item = (&u32, &Node)> {
         self.spine.iter().map(|id| {
             let node = self.items.get(id).unwrap();
             (id, node)
         })
     }
 
-    pub fn iter_windows(&self) -> impl Iterator<Item=&WindowWrap> {
+    pub fn iter_windows(&self) -> impl Iterator<Item = &WindowWrap> {
         self.items.values().filter_map(|node| match node {
             Node::Window(w) => Some(w),
             _ => None,
         })
     }
 
-    pub fn iter_containers(&self) -> impl Iterator<Item=&ContainerRef> {
+    pub fn iter_containers(&self) -> impl Iterator<Item = &ContainerRef> {
         self.items.values().filter_map(|node| match node {
             Node::Container(c) => Some(c),
             _ => None,
@@ -79,7 +78,7 @@ impl NodeMap {
             .map(|window| window.id())
             .collect();
 
-        let redraw = if ids.is_empty() { false } else { true };
+        let redraw = !ids.is_empty();
 
         for id in ids {
             self.spine.drain_filter(|id_| id == *id_);
@@ -251,12 +250,12 @@ impl NodeMap {
     pub fn get_focused(&self) -> Option<&Node> {
         self.focus_idx
             .and_then(|idx| self.spine.get(idx))
-            .and_then(|id| {
-                self.items.get(id)
-            }).or_else(||
-            self.iter_windows()
-                .last()
-                .and_then(|window| self.items.get(&window.id())))
+            .and_then(|id| self.items.get(id))
+            .or_else(|| {
+                self.iter_windows()
+                    .last()
+                    .and_then(|window| self.items.get(&window.id()))
+            })
     }
 
     fn set_focus_index(&mut self, idx: usize) {

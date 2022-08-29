@@ -107,22 +107,16 @@ impl OutputHandler for CallLoopData {
         }
 
         if ws.needs_redraw {
-            debug!("Workspace redraw");
-            let (x, w) = ws.get_focus();
+            debug!("Redraw Workspace({})", self.state.current_workspace);
 
-            ws.redraw(
-                &mut self.state.space,
-                &self.state.display,
-                self.state.x11_state.as_mut(),
-            );
+            ws.redraw(&mut self.state.space, self.state.x11_state.as_mut());
 
-            ws.update_borders(&self.state.space);
+            ws.update_borders();
         }
 
-        let (container, window) = ws.get_focus();
         let output_geometry = ws.get_output_geometry_f64(&self.state.space);
 
-        if let (Some(geometry), Some(window)) = (output_geometry, window) {
+        if let Some(geometry) = output_geometry {
             self.draw_border(ws.borders.as_slice(), renderer, &mut elems, geometry);
         }
 

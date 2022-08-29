@@ -94,8 +94,7 @@ impl XdgShellHandler for Wazemmes {
     }
 
     // FIXME: redrawing everything on each ack is a bit too much
-    fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {
-    }
+    fn ack_configure(&mut self, _surface: WlSurface, _configure: Configure) {}
 }
 
 // Xdg Shell
