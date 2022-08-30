@@ -13,9 +13,8 @@ use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::dmabuf::{
     DmabufGlobal, DmabufGlobalData, DmabufHandler, DmabufState, ImportError,
 };
-use smithay::wayland::output;
-use smithay::wayland::output::PhysicalProperties;
 use std::str::FromStr;
+use smithay::output::{Mode, PhysicalProperties};
 
 pub mod drawing;
 pub mod drm;
@@ -35,10 +34,10 @@ pub struct NewOutputDescriptor {
     pub name: String,
     pub physical_properties: PhysicalProperties,
 
-    pub prefered_mode: output::Mode,
-    pub possible_modes: Vec<output::Mode>,
+    pub prefered_mode: Mode,
+    pub possible_modes: Vec<Mode>,
 
-    pub transform: wl_output::Transform,
+    pub transform: smithay::utils::Transform,
 }
 
 pub enum BackendState {
@@ -67,7 +66,7 @@ impl BackendState {
 }
 
 impl BackendState {
-    pub fn update_mode(&mut self, output_id: &OutputId, mode: &wayland::output::Mode) {
+    pub fn update_mode(&mut self, output_id: &OutputId, mode: &Mode) {
         match self {
             BackendState::Drm(state) => state.update_mode(output_id, mode),
             BackendState::None => {}
@@ -113,7 +112,7 @@ pub trait InputHandler {
 pub trait OutputHandler {
     fn output_created(&mut self, output: NewOutputDescriptor);
 
-    fn output_mode_updated(&mut self, output_id: &OutputId, mode: wayland::output::Mode);
+    fn output_mode_updated(&mut self, output_id: &OutputId, mode: Mode);
 
     fn output_render(
         &mut self,

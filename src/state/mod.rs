@@ -10,7 +10,7 @@ use smithay::reexports::wayland_server::{Display, DisplayHandle};
 use smithay::utils::{Logical, Point};
 use smithay::wayland::compositor::CompositorState;
 use smithay::wayland::data_device::DataDeviceState;
-use smithay::wayland::output::{Output, OutputManagerState};
+use smithay::output::Output;
 
 use smithay::input::pointer::PointerHandle;
 use smithay::input::{Seat, SeatState};
@@ -29,11 +29,13 @@ use std::ffi::OsString;
 use crate::config::WazemmesConfig;
 use smithay::wayland::primary_selection::PrimarySelectionState;
 use std::time::Instant;
+use smithay::wayland::output::OutputManagerState;
 
 #[cfg(feature = "xwayland")]
 use crate::backend::xwayland::X11State;
 #[cfg(feature = "xwayland")]
 use smithay::xwayland::XWayland;
+use crate::handlers::screencopy::ScreenCopyManagerState;
 
 pub mod output;
 pub mod seat;
@@ -52,6 +54,7 @@ pub struct Wazemmes {
     pub primary_selection_state: PrimarySelectionState,
     pub shm_state: ShmState,
     pub _output_manager_state: OutputManagerState,
+    pub screen_copy_manager_state: ScreenCopyManagerState,
     pub seat_state: SeatState<Self>,
     pub data_device_state: DataDeviceState,
     pub dmabuf_state: DmabufState,

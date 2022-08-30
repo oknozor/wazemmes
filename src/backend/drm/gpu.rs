@@ -21,7 +21,7 @@ use smithay::reexports::drm::control::{crtc, Device as _, ModeTypeFlags};
 use smithay::reexports::gbm::Device as GbmDevice;
 use smithay::utils::signaling::{Linkable, Signaler};
 use smithay::utils::{Rectangle, Size};
-use smithay::wayland::output::Mode as WlMode;
+use smithay::output::Mode as WlMode;
 
 pub struct Gpu {
     drm: DrmDevice,
@@ -81,7 +81,7 @@ impl Gpu {
         for (conn, crtc) in res.map {
             let drm = drm.inner();
 
-            let connector_info = drm.get_connector(conn).unwrap();
+            let connector_info = drm.get_connector(conn, false).unwrap();
 
             let connector_name = super::format_connector_name(
                 connector_info.interface(),

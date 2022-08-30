@@ -87,6 +87,7 @@ impl InputHandler for CallLoopData {
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 let pointer = self.state.seat.get_pointer().unwrap();
 
+
                 let output = absolute_output
                     .unwrap_or_else(|| self.state.space.outputs().next().unwrap().clone());
                 let output_geo = self.state.space.output_geometry(&output).unwrap();
@@ -162,8 +163,8 @@ impl CallLoopData {
         let mut mod_pressed = false;
 
         let action = keyboard
-            .input(data, keycode, state, serial, time, |modifiers, handle| {
-                let keysym = handle.modified_sym();
+            .input(data, keycode, state, serial, time, | app_state, modifiers, key_handle| {
+                let keysym = key_handle.modified_sym();
                 if state == KeyState::Pressed {
                     if modifiers.alt {
                         mod_pressed = true;

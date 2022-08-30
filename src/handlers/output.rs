@@ -8,7 +8,7 @@ use slog_scope::debug;
 use smithay::backend::renderer::gles2::{Gles2Renderer, Gles2Texture};
 use smithay::desktop::space::SurfaceTree;
 use smithay::utils::{Physical, Rectangle, Transform};
-use smithay::wayland::output::{Mode, Output};
+use smithay::output::{Mode, Output};
 
 smithay::custom_elements! {
     pub CustomElem<=Gles2Renderer>;

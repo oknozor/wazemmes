@@ -3,20 +3,20 @@ use eyre::Result;
 use slog_scope::{error, info};
 use smithay::backend::allocator::dmabuf::Dmabuf;
 use smithay::backend::drm::DrmNode;
-use smithay::backend::renderer::gles2::{Gles2Renderbuffer, Gles2Texture};
+use smithay::backend::renderer::gles2::{Gles2Renderbuffer, Gles2Renderer, Gles2Texture};
 use smithay::backend::renderer::multigpu::egl::EglGlesBackend;
-use smithay::backend::renderer::multigpu::{GpuManager, MultiRenderer};
-use smithay::backend::renderer::ImportDma;
+use smithay::backend::renderer::multigpu::{ApiDevice, Error, GpuManager, MultiRenderer};
+use smithay::backend::renderer::{ImportDma, Offscreen};
 use smithay::backend::session::auto::AutoSession;
 use smithay::backend::session::{Session, Signal as SessionSignal};
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::wayland_server::protocol::wl_output;
-use smithay::wayland::output::{Mode as WlMode, PhysicalProperties};
 use std::cell::RefCell;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use smithay::output::{Mode, PhysicalProperties};
 
 mod device;
 mod gpu;
@@ -46,10 +46,10 @@ impl DrmOutputId {
 
 pub struct DrmBackendState {
     gpus: HashMap<DrmNode, Gpu>,
-    gpu_manager: Rc<RefCell<GpuManager<EglGlesBackend>>>,
+    pub(crate) gpu_manager: Rc<RefCell<GpuManager<EglGlesBackend>>>,
     pointer_image: crate::draw::pointer::Cursor,
     pointer_images: Vec<(xcursor::parser::Image, Gles2Texture)>,
-    primary_gpu: DrmNode,
+    pub primary_gpu: DrmNode,
     _restart_token: SignalToken,
 }
 
@@ -80,7 +80,7 @@ impl DrmBackendState {
             .map_err(|_| ImportError::Failed)
     }
 
-    pub fn update_mode(&mut self, output: &OutputId, mode: &wayland::output::Mode) {
+    pub fn update_mode(&mut self, output: &OutputId, mode: &Mode) {
         let id = OUTPUT_ID_MAP.with(|map| map.borrow().get(output).cloned());
 
         let output = id.and_then(|id| {
@@ -101,9 +101,9 @@ pub fn run_udev<D>(
     display: &DisplayHandle,
     handler: &mut D,
 ) -> Result<()>
-where
-    D: BackendHandler,
-    D: 'static,
+    where
+        D: BackendHandler,
+        D: 'static,
 {
     // Init session
     let (mut session, notifier) = AutoSession::new(None).expect("Could not init session!");
@@ -203,7 +203,7 @@ where
             drm_node: primary_gpu_node,
             crtc,
         };
-        let mode = WlMode {
+        let mode = Mode {
             size: (1920, 1080).into(),
             refresh: 60_000,
         };
@@ -214,13 +214,13 @@ where
             name: "".into(),
             physical_properties: PhysicalProperties {
                 size: (1920, 1080).into(),
-                subpixel: wl_output::Subpixel::Unknown,
+                subpixel: smithay::output::Subpixel::Unknown,
                 make: "".into(),
                 model: "".into(),
             },
             prefered_mode: mode,
             possible_modes: vec![mode],
-            transform: wl_output::Transform::Normal,
+            transform: Transform::Normal,
         })
     }
 
@@ -236,8 +236,10 @@ use crate::backend::drm::gpu::Gpu;
 use smithay::reexports::drm::control::{connector, crtc};
 use smithay::reexports::wayland_server::DisplayHandle;
 use smithay::utils::signaling::SignalToken;
+use smithay::utils::Transform;
 use smithay::wayland;
 use smithay::wayland::dmabuf::{DmabufGlobal, ImportError};
+use crate::backend::drawing::AsGles2Renderer;
 
 pub fn format_connector_name(interface: connector::Interface, interface_id: u32) -> String {
     let other_short_name;

@@ -1,9 +1,11 @@
-pub mod backend;
 mod compositor;
-pub mod dmabuf;
-pub mod output;
 mod xdg_decoration;
 mod xdg_shell;
+
+pub mod backend;
+pub mod dmabuf;
+pub mod output;
+pub mod screencopy;
 
 use crate::Wazemmes;
 

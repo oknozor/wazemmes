@@ -6,11 +6,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+#smithay = { path = "../smithay", features = ["backend_winit", "wayland_frontend", "desktop", "slog-stdlog"] }
 smithay = { git = "https://github.com/Smithay/smithay", features = ["backend_winit", "wayland_frontend", "desktop", "slog-stdlog"] }
+wayland-scanner = "=0.30.0-beta.9"
+wayland-protocols-wlr = "0.1.0-beta.9"
+
 input = { version = "0.7", features = ["udev"], optional = true }
 
 xkbcommon = "0.4.1"
-slog = { version = "2.1.1" }
+slog = { version = "2.1.1", features = ["max_level_trace", "release_max_level_trace"] }
 slog-term = "2.8"
 slog-async = "2.2"
 slog-stdlog = "4.1.0"
@@ -33,6 +37,7 @@ clap = { version = "3.2.17", features = ["derive"] }
 serde = { version = "1.0.144", features = ["derive"] }
 ron = "0.8.0"
 dirs = "4.0.0"
+
 
 [dependencies.x11rb]
 optional = true

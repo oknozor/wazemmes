@@ -6,10 +6,12 @@ use smithay::reexports::calloop::timer::{TimeoutAction, Timer};
 use smithay::reexports::calloop::EventLoop;
 use smithay::reexports::wayland_server::protocol::wl_output;
 use smithay::reexports::wayland_server::DisplayHandle;
-use smithay::wayland::output::{Mode, PhysicalProperties};
+use smithay::output::{Mode, Subpixel};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
+use smithay::output::PhysicalProperties;
+use smithay::utils::Transform;
 
 pub const OUTPUT_NAME: &str = "winit";
 
@@ -40,7 +42,7 @@ where
 
     let physical_properties = PhysicalProperties {
         size: (0, 0).into(),
-        subpixel: wl_output::Subpixel::Unknown,
+        subpixel: Subpixel::Unknown,
         make: "Wazemmes".into(),
         model: "Winit".into(),
     };
@@ -48,7 +50,7 @@ where
     let output = NewOutputDescriptor {
         id: OutputId { id: 1 },
         physical_properties,
-        transform: wl_output::Transform::Flipped180,
+        transform: Transform::Flipped180,
         name: OUTPUT_NAME.to_owned(),
         prefered_mode: mode,
         possible_modes: vec![mode],

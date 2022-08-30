@@ -9,7 +9,7 @@ use crate::shell::windows::toplevel::WindowWrap;
 use slog_scope::debug;
 use smithay::desktop::Space;
 use smithay::utils::{Logical, Physical, Rectangle};
-use smithay::wayland::output::Output;
+use smithay::output::Output;
 use std::cell::{Ref, RefCell, RefMut};
 use std::rc::Rc;
 

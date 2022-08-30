@@ -31,6 +31,7 @@ use std::time::Instant;
 
 #[cfg(feature = "xwayland")]
 use smithay::xwayland::{XWayland, XWaylandEvent};
+use crate::handlers::screencopy::ScreenCopyManagerState;
 
 mod backend;
 pub mod border;
@@ -114,13 +115,14 @@ fn init_wayland_listener<D>(
             // Inside the callback, you should insert the client into the display.
             //
             // You may also associate some data with the client when inserting the client.
-            state
+             state
                 .display
                 .handle()
                 .insert_client(client_stream, Arc::new(ClientState))
                 .unwrap();
-        })
+       })
         .expect("Failed to init the wayland event source.");
+    
 
     // You also need to add the display itself to the event loop, so that client events will be processed by wayland-server.
     handle
@@ -156,6 +158,7 @@ fn main() -> eyre::Result<()> {
     let mut seat_state = SeatState::<Wazemmes>::new();
     let data_device_state = DataDeviceState::new::<Wazemmes, _>(&dh, slog_scope::logger());
     let xdg_decoration_state = XdgDecorationState::new::<Wazemmes, _>(&dh, slog_scope::logger());
+    let screen_copy_manager_state = ScreenCopyManagerState::new(&dh);
 
     let dmabuf_state = DmabufState::new();
 
@@ -182,6 +185,7 @@ fn main() -> eyre::Result<()> {
         primary_selection_state,
         shm_state,
         _output_manager_state: output_manager_state,
+        screen_copy_manager_state: screen_copy_manager_state,
         seat_state,
         data_device_state,
         dmabuf_state,
