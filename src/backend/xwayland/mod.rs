@@ -4,12 +4,13 @@ use std::convert::TryFrom;
 use std::os::unix::net::UnixStream;
 use std::sync::Arc;
 
+use smithay::utils::IsAlive;
+use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use crate::backend::xwayland::window::WinType;
 use crate::shell::windows::toplevel::WindowWrap;
 use crate::shell::windows::xpopup::X11Popup;
 use crate::{Wazemmes, WorkspaceRef};
 use smithay::desktop::{Kind, Window, X11Surface};
-use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::reexports::wayland_server::{Client, DisplayHandle, Resource};
 use smithay::utils::x11rb::X11Source;
 use smithay::utils::{Logical, Point};
@@ -23,9 +24,11 @@ use x11rb::protocol::xproto::{
 };
 use x11rb::protocol::Event;
 use x11rb::rust_connection::{DefaultStream, RustConnection};
+use crate::backend::xwayland::error::XWaylandError;
 
 mod client;
 mod window;
+mod error;
 
 impl Wazemmes {
     #[cfg(feature = "xwayland")]
@@ -262,21 +265,28 @@ impl X11State {
                             }
                         }
                     };
+
                     let id = msg.data.as_data32()[0];
-                    let surface = self.client.object_from_protocol_id(dh, id);
+                    println!("IdMap ={:?}", self.id_map);
+                    println!("Unpaired = {:?}", self.unpaired_surfaces);
+                    println!("X11 Id = {:?}", id);
+                    let surface = self.client.object_from_protocol_id::<WlSurface>(dh, id);
 
                     match surface {
                         Err(err) => {
                             warn!("X11 surface has invalid id {:?}", err);
                             self.unpaired_surfaces.insert(id, (msg.window, location));
                         }
-                        Ok(surface) => {
+                        Ok(surface) if surface.alive() => {
                             debug!(
                                 "X11 surface {:x?} corresponds to WlSurface {:x} = {:?}",
                                 msg.window, id, surface,
                             );
-                            self.new_window(msg.window, surface, ws);
+                            if let Err(err) = self.new_window(msg.window, surface, ws) {
+                                self.unpaired_surfaces.insert(id, (msg.window, location));
+                            }
                         }
+                        Ok(surface) => warn!("Dead X11 surface {}", surface.id())
                     }
                 }
             }
@@ -287,15 +297,16 @@ impl X11State {
         Ok(())
     }
 
-    fn new_window(&mut self, xwindow: X11Window, surface: WlSurface, ws: WorkspaceRef) {
+    fn new_window(&mut self, xwindow: X11Window, surface: WlSurface, ws: WorkspaceRef) -> Result<(), XWaylandError> {
         debug!("Matched X11 surface {:x?} to {:x?}", xwindow, surface);
 
         let win_type = self.get_window_type(xwindow);
 
         if give_role(&surface, "x11_surface").is_err() {
             error!("Surface {:x?} already has a role?!", surface);
-            return;
+            return Ok(());
         }
+
         let protocol_id = surface.id().protocol_id();
         let x11surface = X11Surface { surface };
         let ws = ws.get();
@@ -303,7 +314,7 @@ impl X11State {
         let mut container = container.get_mut();
         self.id_map.insert(protocol_id, xwindow);
 
-        match win_type {
+        match win_type? {
             WinType::Normal => {
                 debug!("New toplevel from XWindow {xwindow}");
                 let window = WindowWrap::from_x11_window(Window::new(Kind::X11(x11surface)));
@@ -311,13 +322,14 @@ impl X11State {
             }
             _ => {
                 let popup = Window::new(Kind::X11(x11surface));
-                let loc = self.get_location(xwindow);
+                let loc = self.get_location(xwindow)?;
                 debug!("New Xpopup from XWindow {xwindow}");
                 container.push_xpopup(X11Popup::new(popup, loc));
             }
         }
 
         self.needs_redraw = true;
+        Ok(())
     }
 }
 
@@ -333,10 +345,10 @@ pub fn commit_hook(
         if client == state.client {
             // Is the surface among the unpaired surfaces (see comment next to WL_SURFACE_ID
             // handling above)
-            if let Some((window, _loc)) =
-                state.unpaired_surfaces.remove(&surface.id().protocol_id())
-            {
-                state.new_window(window, surface.clone(), ws);
+            let unpaired_surface = state.unpaired_surfaces.remove(&surface.id().protocol_id());
+
+            if let Some((window, _loc)) = unpaired_surface {
+                state.new_window(window, surface.clone(), ws).expect("X11 Error");
             }
         }
     }

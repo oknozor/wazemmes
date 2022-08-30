@@ -20,9 +20,10 @@ pub type GlMultiRenderer<'a> =
     MultiRenderer<'a, 'a, EglGlesBackend, EglGlesBackend, Gles2Renderbuffer>;
 pub type GlMultiFrame = MultiFrame<EglGlesBackend, EglGlesBackend>;
 
-pub const FLOATING_Z_INDEX: u8 = 101;
 pub const TILING_Z_INDEX: u8 = 100;
-pub const POP_UP_Z_INDEX: u8 = 102;
+pub const BORDER_Z_INDEX: u8 = 102;
+pub const POP_UP_Z_INDEX: u8 = 103;
+pub const FLOATING_Z_INDEX: u8 = 104;
 pub const CURSOR_Z_INDEX: u8 = 255;
 
 smithay::custom_elements! {

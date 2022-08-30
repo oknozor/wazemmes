@@ -15,6 +15,7 @@ mod glow;
 
 use crate::shell::drawable::Borders;
 use glow::{Program, Shader};
+use crate::backend::drawing::BORDER_Z_INDEX;
 
 pub const BLUE: (f32, f32, f32) = (26.0 / 255.0, 95.0 / 255.0, 205.0 / 255.0);
 pub const RED: (f32, f32, f32) = (1.0, 95.0 / 255.0, 205.0 / 255.0);
@@ -67,6 +68,7 @@ impl QuadPipeline {
             y: [0.0, -2.0 / output_geometry.size.h as f32, 0.0].into(),
             z: [-1.0, 1.0, 1.0].into(),
         };
+
 
         let x = quad_rect.loc.x as f32;
         let y = quad_rect.loc.y as f32;
@@ -226,7 +228,7 @@ impl RenderElement<Gles2Renderer> for QuadElement {
     }
 
     fn z_index(&self) -> u8 {
-        255
+        BORDER_Z_INDEX
     }
 }
 

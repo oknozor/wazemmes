@@ -168,7 +168,7 @@ impl WindowWrap {
             Kind::X11(x11surface) => {
                 let state = x11_state.unwrap();
                 let id = x11surface.surface.id().protocol_id();
-                state.send_configure(id, Some(self.size()))
+                state.send_configure(id, Some(self.size())).expect("X11 Error");
             }
         }
 
@@ -213,7 +213,7 @@ impl WindowWrap {
     pub fn send_close(&self, x11_state: Option<&mut X11State>) {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => toplevel.send_close(),
-            Kind::X11(_x11surface) => x11_state.unwrap().send_close(self.wl_id()),
+            Kind::X11(_x11surface) => x11_state.unwrap().send_close(self.wl_id()).expect("X11 Error"),
         }
     }
 

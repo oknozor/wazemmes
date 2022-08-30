@@ -1,6 +1,6 @@
 use crate::backend::xwayland::Atoms;
-use eyre::eyre;
 use std::fmt;
+use crate::backend::xwayland::error::XWaylandError;
 
 /// WinType provides an easy way to identify the different window types
 #[allow(dead_code)]
@@ -25,7 +25,7 @@ pub enum WinType {
 
 // Convert from u32 to Type
 impl WinType {
-    pub fn from(atoms: &Atoms, val: u32) -> eyre::Result<WinType> {
+    pub fn from(atoms: &Atoms, val: u32) -> Result<WinType, XWaylandError> {
         if val == atoms._NET_WM_WINDOW_TYPE_COMBO {
             Ok(WinType::Combo)
         } else if val == atoms._NET_WM_WINDOW_TYPE_DESKTOP {
@@ -55,7 +55,7 @@ impl WinType {
         } else if val == atoms._NET_WM_WINDOW_TYPE_UTILITY {
             Ok(WinType::Utility)
         } else {
-            Err(eyre!("Failed to get xwindow type"))
+            Err(XWaylandError::UnknownAtom(val))
         }
     }
 }
