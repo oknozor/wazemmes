@@ -1,4 +1,6 @@
 use crate::backend::drawing::FLOATING_Z_INDEX;
+use crate::shell::windows::toplevel::WindowWrap;
+use crate::shell::workspace;
 use crate::Wazemmes;
 use smithay::desktop::Window;
 use smithay::input::pointer::{
@@ -27,9 +29,12 @@ impl PointerGrab<Wazemmes> for MoveSurfaceGrab {
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
         let location = new_location.to_i32_round();
-
-        data.space
-            .map_window(&self.window, location, FLOATING_Z_INDEX, true);
+        let window = WindowWrap::from(self.window.clone());
+        window.update_loc(location);
+        window.map(&mut data.space, data.x11_state.as_mut(), true);
+        let ws = data.get_current_workspace();
+        let mut ws = ws.get_mut();
+        ws.needs_redraw = true;
     }
 
     fn button(

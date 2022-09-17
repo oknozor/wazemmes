@@ -168,11 +168,35 @@ impl WindowWrap {
             Kind::X11(x11surface) => {
                 let state = x11_state.unwrap();
                 let id = x11surface.surface.id().protocol_id();
-                state.send_configure(id, Some(self.size())).expect("X11 Error");
+                state
+                    .send_configure(id, Some(self.size()))
+                    .expect("X11 Error");
             }
         }
 
         space.map_window(&self.inner, self.loc(), self.z_index(), activate);
+    }
+
+    pub fn update_loc<P>(&self, location: P) -> bool
+    where
+        P: Into<Point<i32, Logical>> + Debug,
+    {
+        let state = self.get_state();
+        let new_location = location.into();
+
+        let loc_changed = if *state.loc.borrow() != new_location {
+            state.loc.replace(new_location);
+            true
+        } else {
+            false
+        };
+
+        if loc_changed {
+            self.get_state().borders.replace(self.make_borders());
+            true
+        } else {
+            false
+        }
     }
 
     pub fn update_loc_and_size<S, P>(&self, size: Option<S>, location: P) -> bool
@@ -213,7 +237,10 @@ impl WindowWrap {
     pub fn send_close(&self, x11_state: Option<&mut X11State>) {
         match self.inner.toplevel() {
             Kind::Xdg(toplevel) => toplevel.send_close(),
-            Kind::X11(_x11surface) => x11_state.unwrap().send_close(self.wl_id()).expect("X11 Error"),
+            Kind::X11(_x11surface) => x11_state
+                .unwrap()
+                .send_close(self.wl_id())
+                .expect("X11 Error"),
         }
     }
 
