@@ -1,4 +1,5 @@
 # Wazemmes
+![logo](logo.png)
 A (WIP) wayland tiling wm
 
 # Roadmap
